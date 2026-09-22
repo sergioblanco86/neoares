@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/session-event.schema.json",
+  "title": "SessionEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "sessionId",
+    "sequence",
+    "type",
+    "occurredAt",
+    "recordedAt",
+    "actor",
+    "correlationId",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "sessionId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "type": {
+      "enum": [
+        "SESSION_CREATED",
+        "SESSION_STATE_CHANGED",
+        "CANDIDATES_DISCOVERED",
+        "CANDIDATE_REJECTED",
+        "TRACK_SELECTED",
+        "TRACK_PREPARATION_STARTED",
+        "TRACK_READY",
+        "TRACK_PREPARATION_FAILED",
+        "TRANSITION_PLANNED",
+        "TRANSITION_ARMED",
+        "TRANSITION_STARTED",
+        "TRANSITION_COMPLETED",
+        "TRANSITION_FALLBACK_USED",
+        "PLAYBACK_STARTED",
+        "PLAYBACK_PAUSED",
+        "PLAYBACK_RESUMED",
+        "TRACK_SKIPPED",
+        "USER_COMMAND_RECEIVED",
+        "USER_COMMAND_APPLIED",
+        "PREFERENCE_RECORDED",
+        "SOURCE_LEASE_RELEASED",
+        "RECOVERY_STARTED",
+        "RECOVERY_COMPLETED",
+        "ERROR_OCCURRED"
+      ]
+    },
+    "occurredAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "recordedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "actor": { "enum": ["USER", "ORCHESTRATOR", "CURATOR", "PREPARATION", "MIXER", "SOURCE_ADAPTER", "AI_ADAPTER", "STORAGE"] },
+    "correlationId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "causationId": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Payload versionado por tipo; no admite secretos.",
+      "required": ["payloadVersion"],
+      "properties": {
+        "payloadVersion": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    }
+  }
+}

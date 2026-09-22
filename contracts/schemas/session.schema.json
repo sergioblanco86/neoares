@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/session.schema.json",
+  "title": "Session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "createdAt",
+    "updatedAt",
+    "startedAt",
+    "endedAt",
+    "state",
+    "randomSeed",
+    "djId",
+    "djRevision",
+    "djSnapshot",
+    "temporaryInstruction",
+    "energy",
+    "playback",
+    "queue",
+    "history",
+    "lastAppliedEventId"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "startedAt": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/timestamp" },
+        { "type": "null" }
+      ]
+    },
+    "endedAt": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/timestamp" },
+        { "type": "null" }
+      ]
+    },
+    "state": {
+      "enum": ["CREATED", "PREPARING", "READY", "PLAYING", "PAUSED", "DRAINING", "STALLED", "COMPLETED", "FAILED", "ABORTED"]
+    },
+    "randomSeed": { "type": "integer", "minimum": 0 },
+    "djId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "djRevision": { "type": "integer", "minimum": 1 },
+    "djSnapshot": { "$ref": "dj-profile.schema.json" },
+    "temporaryInstruction": { "type": ["string", "null"], "maxLength": 4000 },
+    "energy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "target", "temporaryDelta"],
+      "properties": {
+        "phase": { "enum": ["WARMUP", "BUILD", "PEAK", "SUSTAIN", "COOLDOWN"] },
+        "target": { "$ref": "common.schema.json#/$defs/confidence" },
+        "temporaryDelta": { "type": "number", "minimum": -1, "maximum": 1 }
+      }
+    },
+    "playback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["masterDeck", "positionSeconds", "currentTrackId", "armedTransitionId"],
+      "properties": {
+        "masterDeck": { "enum": ["A", "B", "NONE"] },
+        "positionSeconds": { "type": "number", "minimum": 0 },
+        "currentTrackId": {
+          "anyOf": [
+            { "$ref": "common.schema.json#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        },
+        "armedTransitionId": {
+          "anyOf": [
+            { "$ref": "common.schema.json#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "queue": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["position", "trackId", "state", "selection", "alternatives"],
+        "properties": {
+          "position": { "type": "integer", "minimum": 0 },
+          "trackId": { "$ref": "common.schema.json#/$defs/uuid" },
+          "state": { "enum": ["CANDIDATE", "RESOLVING", "ANALYZING", "READY", "PLAYING", "PLAYED", "SKIPPED", "FAILED"] },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["totalScore", "reasons", "penalties", "curatorVersion"],
+            "properties": {
+              "totalScore": { "$ref": "common.schema.json#/$defs/confidence" },
+              "reasons": { "type": "array", "items": { "type": "string" } },
+              "penalties": { "type": "array", "items": { "type": "string" } },
+              "curatorVersion": { "type": "string", "minLength": 1 }
+            }
+          },
+          "alternatives": {
+            "type": "array",
+            "items": { "$ref": "common.schema.json#/$defs/uuid" },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trackId", "startedAt", "endedAt", "outcome"],
+        "properties": {
+          "trackId": { "$ref": "common.schema.json#/$defs/uuid" },
+          "startedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+          "endedAt": {
+            "anyOf": [
+              { "$ref": "common.schema.json#/$defs/timestamp" },
+              { "type": "null" }
+            ]
+          },
+          "outcome": { "enum": ["PLAYING", "COMPLETED", "SKIPPED", "FAILED"] }
+        }
+      }
+    },
+    "lastAppliedEventId": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

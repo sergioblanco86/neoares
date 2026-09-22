@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/transition-plan.schema.json",
+  "title": "TransitionPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "sessionId",
+    "createdAt",
+    "expiresAt",
+    "plannerVersion",
+    "type",
+    "confidence",
+    "fromTrackId",
+    "toTrackId",
+    "fromAnalysis",
+    "toAnalysis",
+    "timing",
+    "tempo",
+    "gain",
+    "preconditions",
+    "fallbackType"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "sessionId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "plannerVersion": { "type": "string", "minLength": 1 },
+    "type": { "$ref": "#/$defs/transitionType" },
+    "confidence": { "$ref": "common.schema.json#/$defs/confidence" },
+    "fromTrackId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "toTrackId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "fromAnalysis": { "$ref": "common.schema.json#/$defs/analysisRef" },
+    "toAnalysis": { "$ref": "common.schema.json#/$defs/analysisRef" },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromStartSeconds", "fromEndSeconds", "toStartSeconds", "overlapSeconds", "anchorKind"],
+      "properties": {
+        "fromStartSeconds": { "type": "number", "minimum": 0 },
+        "fromEndSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "toStartSeconds": { "type": "number", "minimum": 0 },
+        "overlapSeconds": { "type": "number", "minimum": 0 },
+        "anchorKind": { "enum": ["BEAT", "BAR", "PHRASE", "TIME"] }
+      }
+    },
+    "tempo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["masterBpm", "fromPlaybackRate", "toPlaybackRate", "preservePitch"],
+      "properties": {
+        "masterBpm": { "type": ["number", "null"], "minimum": 20, "maximum": 300 },
+        "fromPlaybackRate": { "type": "number", "minimum": 0.5, "maximum": 2 },
+        "toPlaybackRate": { "type": "number", "minimum": 0.5, "maximum": 2 },
+        "preservePitch": { "type": "boolean" }
+      }
+    },
+    "gain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromStartDb", "fromEndDb", "toStartDb", "toEndDb", "curve"],
+      "properties": {
+        "fromStartDb": { "type": "number" },
+        "fromEndDb": { "type": "number" },
+        "toStartDb": { "type": "number" },
+        "toEndDb": { "type": "number" },
+        "curve": { "enum": ["LINEAR", "EQUAL_POWER", "EXPONENTIAL"] }
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "enum": ["SOURCE_VALID", "FINGERPRINT_MATCH", "NEXT_DECK_CUED", "MIN_BUFFER_READY", "CLOCK_STABLE", "NOT_EXPIRED"]
+      },
+      "uniqueItems": true
+    },
+    "fallbackType": { "$ref": "#/$defs/transitionType" },
+    "emergencyLoop": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["startSeconds", "endSeconds", "bars", "maxDurationSeconds"],
+      "properties": {
+        "startSeconds": { "type": "number", "minimum": 0 },
+        "endSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "bars": { "enum": [1, 2, 4, 8] },
+        "maxDurationSeconds": { "type": "number", "minimum": 1, "maximum": 60 }
+      }
+    }
+  },
+  "$defs": {
+    "transitionType": {
+      "enum": ["BEATMIX", "CROSSFADE", "FADE_THEN_START", "HARD_CUT", "EMERGENCY_LOOP"]
+    }
+  }
+}

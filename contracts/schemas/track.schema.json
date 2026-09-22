@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/track.schema.json",
+  "title": "Track",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "createdAt",
+    "updatedAt",
+    "source",
+    "identity",
+    "durationSeconds",
+    "contentType",
+    "availability",
+    "userDisposition",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "source": { "$ref": "common.schema.json#/$defs/sourceRef" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "artists", "displayArtist", "versionLabel", "confidence", "canonicalRecordingId"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "artists": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "displayArtist": { "type": "string", "minLength": 1 },
+        "versionLabel": { "type": ["string", "null"] },
+        "confidence": { "$ref": "common.schema.json#/$defs/confidence" },
+        "canonicalRecordingId": { "type": ["string", "null"] }
+      }
+    },
+    "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },
+    "contentType": {
+      "enum": ["OFFICIAL_VIDEO", "OFFICIAL_AUDIO", "LYRIC_VIDEO", "LIVE", "REMIX", "EXTENDED", "USER_UPLOAD", "UNKNOWN"]
+    },
+    "thumbnailUrl": { "type": ["string", "null"], "format": "uri" },
+    "channel": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 }
+      }
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkedAt", "reasonCode"],
+      "properties": {
+        "status": { "enum": ["UNKNOWN", "AVAILABLE", "UNAVAILABLE", "RESTRICTED"] },
+        "checkedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "reasonCode": { "type": ["string", "null"] }
+      }
+    },
+    "userDisposition": {
+      "enum": ["NEUTRAL", "LIKED", "DISLIKED", "BLOCKED", "REVIEW"]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value", "discoveredAt"],
+      "properties": {
+        "kind": { "enum": ["DIRECT", "PLAYLIST", "SEARCH", "RELATED", "AI_SUGGESTION", "HISTORY"] },
+        "value": { "type": "string" },
+        "discoveredAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    }
+  }
+}

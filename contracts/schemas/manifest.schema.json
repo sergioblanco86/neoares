@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/manifest.schema.json",
+  "title": "DataManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "installationId", "createdAt", "updatedAt", "appVersion", "lastSuccessfulMigration", "activeSessionId"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "installationId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "appVersion": { "type": "string", "minLength": 1 },
+    "lastSuccessfulMigration": { "type": "integer", "minimum": 0 },
+    "activeSessionId": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/track-analysis.schema.json",
+  "title": "TrackAnalysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "trackId",
+    "createdAt",
+    "algorithmVersion",
+    "sourceFingerprint",
+    "durationSeconds",
+    "tempo",
+    "meter",
+    "key",
+    "loudness",
+    "energy",
+    "beats",
+    "phrases",
+    "cuePoints",
+    "quality"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "trackId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "algorithmVersion": { "type": "string", "minLength": 1 },
+    "sourceFingerprint": { "type": "string", "minLength": 16 },
+    "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },
+    "tempo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bpm", "confidence", "variable", "segments"],
+      "properties": {
+        "bpm": { "type": "number", "minimum": 20, "maximum": 300 },
+        "confidence": { "$ref": "common.schema.json#/$defs/confidence" },
+        "variable": { "type": "boolean" },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["startSeconds", "endSeconds", "bpm", "confidence"],
+            "properties": {
+              "startSeconds": { "type": "number", "minimum": 0 },
+              "endSeconds": { "type": "number", "exclusiveMinimum": 0 },
+              "bpm": { "type": "number", "minimum": 20, "maximum": 300 },
+              "confidence": { "$ref": "common.schema.json#/$defs/confidence" }
+            }
+          }
+        }
+      }
+    },
+    "meter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beatsPerBar", "confidence"],
+      "properties": {
+        "beatsPerBar": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "confidence": { "$ref": "common.schema.json#/$defs/confidence" }
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tonic", "mode", "camelot", "confidence"],
+      "properties": {
+        "tonic": { "type": ["string", "null"] },
+        "mode": { "enum": ["MAJOR", "MINOR", "UNKNOWN"] },
+        "camelot": { "type": ["string", "null"], "pattern": "^(1[0-2]|[1-9])[AB]$" },
+        "confidence": { "$ref": "common.schema.json#/$defs/confidence" }
+      }
+    },
+    "loudness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["integratedLufs", "truePeakDb", "confidence"],
+      "properties": {
+        "integratedLufs": { "type": "number" },
+        "truePeakDb": { "type": "number" },
+        "confidence": { "$ref": "common.schema.json#/$defs/confidence" }
+      }
+    },
+    "energy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "segments"],
+      "properties": {
+        "overall": { "$ref": "common.schema.json#/$defs/confidence" },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["startSeconds", "endSeconds", "value", "vocalProbability"],
+            "properties": {
+              "startSeconds": { "type": "number", "minimum": 0 },
+              "endSeconds": { "type": "number", "exclusiveMinimum": 0 },
+              "value": { "$ref": "common.schema.json#/$defs/confidence" },
+              "vocalProbability": { "$ref": "common.schema.json#/$defs/confidence" }
+            }
+          }
+        }
+      }
+    },
+    "beats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["atSeconds", "barBeat", "confidence"],
+        "properties": {
+          "atSeconds": { "type": "number", "minimum": 0 },
+          "barBeat": { "type": "integer", "minimum": 1 },
+          "confidence": { "$ref": "common.schema.json#/$defs/confidence" }
+        }
+      }
+    },
+    "phrases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["startSeconds", "endSeconds", "label", "confidence"],
+        "properties": {
+          "startSeconds": { "type": "number", "minimum": 0 },
+          "endSeconds": { "type": "number", "exclusiveMinimum": 0 },
+          "label": { "enum": ["INTRO", "VERSE", "CHORUS", "BRIDGE", "BREAK", "OUTRO", "UNKNOWN"] },
+          "confidence": { "$ref": "common.schema.json#/$defs/confidence" }
+        }
+      }
+    },
+    "cuePoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "atSeconds", "score", "safeLoopBars"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/uuid" },
+          "kind": { "enum": ["ENTRY", "EXIT", "LOOP", "CUT"] },
+          "atSeconds": { "type": "number", "minimum": 0 },
+          "score": { "$ref": "common.schema.json#/$defs/confidence" },
+          "safeLoopBars": { "type": ["integer", "null"], "enum": [null, 1, 2, 4, 8] }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overallConfidence", "warnings"],
+      "properties": {
+        "overallConfidence": { "$ref": "common.schema.json#/$defs/confidence" },
+        "warnings": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    }
+  }
+}

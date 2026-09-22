@@ -1,0 +1,28 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Runtime data belongs to the local application, never to source control.
+data/
+cache/
+logs/
+backups/
+
+# Temporary and secret-bearing artifacts.
+*.tmp
+*.bak
+*.token
+*.cookies
+
+# Common build outputs reserved for later implementation.
+node_modules/
+.tools/
+.package-staging/
+dist/
+dist-electron/
+build-assets/
+release/
+build/
+target/
+coverage/

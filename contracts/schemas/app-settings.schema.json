@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/app-settings.schema.json",
+  "title": "AppSettings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "createdAt",
+    "updatedAt",
+    "locale",
+    "audio",
+    "storage",
+    "providers",
+    "privacy"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "locale": { "type": "string", "default": "es-CO" },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outputDeviceId", "targetHeadroomDb", "bufferProfile"],
+      "properties": {
+        "outputDeviceId": { "type": ["string", "null"] },
+        "targetHeadroomDb": { "type": "number", "minimum": 1, "maximum": 12 },
+        "bufferProfile": { "enum": ["LOW_LATENCY", "BALANCED", "SAFE"] }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cacheBudgetMb", "historyRetentionDays", "logRetentionDays"],
+      "properties": {
+        "cacheBudgetMb": { "type": "integer", "minimum": 256 },
+        "historyRetentionDays": { "type": "integer", "minimum": 1 },
+        "logRetentionDays": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["youtubeCredentialRef", "ai"],
+      "properties": {
+        "youtubeCredentialRef": {
+          "type": ["string", "null"],
+          "pattern": "^keychain://"
+        },
+        "ai": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "provider", "credentialRef", "timeoutMs"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "provider": { "type": ["string", "null"] },
+            "credentialRef": {
+              "type": ["string", "null"],
+              "pattern": "^keychain://"
+            },
+            "timeoutMs": { "type": "integer", "minimum": 500, "maximum": 60000 }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowRemoteAiMetadata", "diagnosticsLevel"],
+      "properties": {
+        "allowRemoteAiMetadata": { "type": "boolean" },
+        "diagnosticsLevel": { "enum": ["MINIMAL", "STANDARD", "VERBOSE"] }
+      }
+    }
+  }
+}

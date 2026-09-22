@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/dj-profile.schema.json",
+  "title": "DjProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "revision",
+    "name",
+    "description",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "intent",
+    "seeds",
+    "exclusions",
+    "curation",
+    "mixing",
+    "energyPlan"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "description": { "type": "string", "maxLength": 4000 },
+    "status": { "enum": ["ACTIVE", "ARCHIVED"] },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt", "tags", "languages", "regions", "genres"],
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "languages": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "regions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "genres": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "era": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "startYear", "endYear"],
+          "properties": {
+            "label": { "type": "string", "maxLength": 100 },
+            "startYear": { "type": ["integer", "null"], "minimum": 1900, "maximum": 2100 },
+            "endYear": { "type": ["integer", "null"], "minimum": 1900, "maximum": 2100 }
+          }
+        }
+      }
+    },
+    "seeds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artists", "tracks", "playlists", "searchTerms"],
+      "properties": {
+        "artists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "youtubeChannelId": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "tracks": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/sourceRef" }
+        },
+        "playlists": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/sourceRef" }
+        },
+        "searchTerms": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "exclusions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artists", "sourceIds", "channelIds", "terms", "contentTypes"],
+      "properties": {
+        "artists": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "sourceIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "channelIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "terms": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "contentTypes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contentType" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "curation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "familiarity",
+        "discovery",
+        "sameArtistCooldownMinutes",
+        "repeatTrackCooldownMinutes",
+        "minDurationSeconds",
+        "maxDurationSeconds",
+        "allowedContentTypes",
+        "weights"
+      ],
+      "properties": {
+        "familiarity": { "$ref": "common.schema.json#/$defs/confidence" },
+        "discovery": { "$ref": "common.schema.json#/$defs/confidence" },
+        "sameArtistCooldownMinutes": { "type": "integer", "minimum": 0 },
+        "repeatTrackCooldownMinutes": { "type": "integer", "minimum": 0 },
+        "minDurationSeconds": { "type": "integer", "minimum": 1 },
+        "maxDurationSeconds": { "type": "integer", "minimum": 1 },
+        "allowedContentTypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/contentType" },
+          "uniqueItems": true
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["occasion", "taste", "source", "bpm", "key", "energy", "phrase", "novelty"],
+          "properties": {
+            "occasion": { "$ref": "common.schema.json#/$defs/confidence" },
+            "taste": { "$ref": "common.schema.json#/$defs/confidence" },
+            "source": { "$ref": "common.schema.json#/$defs/confidence" },
+            "bpm": { "$ref": "common.schema.json#/$defs/confidence" },
+            "key": { "$ref": "common.schema.json#/$defs/confidence" },
+            "energy": { "$ref": "common.schema.json#/$defs/confidence" },
+            "phrase": { "$ref": "common.schema.json#/$defs/confidence" },
+            "novelty": { "$ref": "common.schema.json#/$defs/confidence" }
+          }
+        }
+      }
+    },
+    "mixing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preferredTempoAdjustmentPercent", "maxTempoAdjustmentPercent", "absoluteTempoAdjustmentPercent", "allowedTransitionTypes"],
+      "properties": {
+        "preferredTempoAdjustmentPercent": { "type": "number", "minimum": 0, "maximum": 10 },
+        "maxTempoAdjustmentPercent": { "type": "number", "minimum": 0, "maximum": 15 },
+        "absoluteTempoAdjustmentPercent": { "type": "number", "minimum": 0, "maximum": 20 },
+        "allowedTransitionTypes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["BEATMIX", "CROSSFADE", "FADE_THEN_START", "HARD_CUT", "EMERGENCY_LOOP"]
+          }
+        }
+      }
+    },
+    "energyPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "curve", "phases"],
+      "properties": {
+        "mode": { "enum": ["FIXED_DURATION", "OPEN_ENDED"] },
+        "curve": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/energyPoint" }
+        },
+        "phases": {
+          "type": "array",
+          "items": { "enum": ["WARMUP", "BUILD", "PEAK", "SUSTAIN", "COOLDOWN"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "contentType": {
+      "enum": ["OFFICIAL_VIDEO", "OFFICIAL_AUDIO", "LYRIC_VIDEO", "LIVE", "REMIX", "EXTENDED", "USER_UPLOAD", "UNKNOWN"]
+    }
+  }
+}
