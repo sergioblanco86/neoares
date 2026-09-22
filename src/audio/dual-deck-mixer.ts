@@ -1,9 +1,12 @@
+import type { LoudnessAnalysis } from "../shared/contracts";
+
 export type DeckSlot = "A" | "B";
 
 type DeckRuntime = {
   buffer: AudioBuffer | null;
   source: AudioBufferSourceNode | null;
   gain: GainNode | null;
+  normalization: GainNode | null;
   analysis: BeatAnalysis | null;
   startedAt: number | null;
   startedOffset: number;
@@ -23,6 +26,7 @@ export type BeatAnalysis = {
   bpm: number;
   firstBeatSeconds: number;
   confidence: number;
+  loudness: LoudnessAnalysis;
 };
 
 export type TransitionReport = {
@@ -58,19 +62,21 @@ export function calculateCrossfadeDelay(
 export class DualDeckMixer {
   #context: AudioContext | null = null;
   #master: GainNode | null = null;
+  #safety: GainNode | null = null;
+  #limiter: DynamicsCompressorNode | null = null;
   #volume = 0.9;
   readonly #loadVersions: Record<DeckSlot, number> = { A: 0, B: 0 };
   readonly #transitionTimers = new Set<number>();
   readonly #decks: Record<DeckSlot, DeckRuntime> = {
-    A: { buffer: null, source: null, gain: null, analysis: null, startedAt: null, startedOffset: 0, waveform: [] },
-    B: { buffer: null, source: null, gain: null, analysis: null, startedAt: null, startedOffset: 0, waveform: [] },
+    A: { buffer: null, source: null, gain: null, normalization: null, analysis: null, startedAt: null, startedOffset: 0, waveform: [] },
+    B: { buffer: null, source: null, gain: null, normalization: null, analysis: null, startedAt: null, startedOffset: 0, waveform: [] },
   };
 
   async unlock(): Promise<void> {
     await this.#ensureContext().resume();
   }
 
-  async load(slot: DeckSlot, bytes: Uint8Array): Promise<BeatAnalysis> {
+  async load(slot: DeckSlot, bytes: Uint8Array, cachedLoudness?: LoudnessAnalysis | null): Promise<BeatAnalysis> {
     this.unload(slot);
     const loadVersion = this.#loadVersions[slot];
     const context = this.#ensureContext();
@@ -78,19 +84,19 @@ export class DualDeckMixer {
     copy.set(bytes);
     const buffer = await context.decodeAudioData(copy.buffer);
     if (loadVersion !== this.#loadVersions[slot]) {
-      throw new Error(`La carga del deck ${slot} fue reemplazada por una solicitud más reciente.`);
+      throw new Error("DECK_LOAD_SUPERSEDED");
     }
-    const analysis = analyzeBeatGrid(buffer);
+    const analysis = { ...analyzeBeatGrid(buffer), loudness: cachedLoudness ?? analyzeLoudness(buffer) };
     this.#decks[slot].buffer = buffer;
     this.#decks[slot].analysis = analysis;
     this.#decks[slot].waveform = summarizeWaveform(buffer.getChannelData(0), 180);
     return analysis;
   }
 
-  async play(slot: DeckSlot): Promise<void> {
+  async play(slot: DeckSlot, offsetSeconds = 0): Promise<void> {
     const context = this.#ensureContext();
     await context.resume();
-    this.#start(slot, 1);
+    this.#start(slot, 1, context.currentTime, offsetSeconds);
   }
 
   async pause(): Promise<void> {
@@ -213,6 +219,8 @@ export class DualDeckMixer {
     await this.#context?.close();
     this.#context = null;
     this.#master = null;
+    this.#safety = null;
+    this.#limiter = null;
   }
 
   #ensureContext(): AudioContext {
@@ -220,35 +228,50 @@ export class DualDeckMixer {
       this.#context = new AudioContext();
       this.#master = this.#context.createGain();
       this.#master.gain.value = this.#volume;
-      this.#master.connect(this.#context.destination);
+      this.#safety = this.#context.createGain();
+      this.#safety.gain.value = dbToLinear(-3);
+      this.#limiter = this.#context.createDynamicsCompressor();
+      this.#limiter.threshold.value = -1;
+      this.#limiter.knee.value = 0;
+      this.#limiter.ratio.value = 20;
+      this.#limiter.attack.value = 0.003;
+      this.#limiter.release.value = 0.1;
+      this.#safety.connect(this.#limiter).connect(this.#master).connect(this.#context.destination);
     }
     return this.#context;
   }
 
   #start(slot: DeckSlot, initialGain: number, when?: number, offsetSeconds = 0): void {
     const deck = this.#decks[slot];
-    if (!deck.buffer) throw new Error(`El deck ${slot} todavía no está preparado.`);
+    if (!deck.buffer) throw new Error("DECK_NOT_READY");
     this.#stop(slot);
 
     const context = this.#ensureContext();
     const source = context.createBufferSource();
+    const normalization = context.createGain();
     const gain = context.createGain();
     source.buffer = deck.buffer;
     source.playbackRate.value = 1;
     gain.gain.value = initialGain;
-    source.connect(gain).connect(this.#master!);
+    normalization.gain.value = dbToLinear(deck.analysis?.loudness.recommendedGainDb ?? 0);
+    source.connect(normalization).connect(gain).connect(this.#safety!);
     const startAt = when ?? context.currentTime;
     source.start(startAt, Math.min(offsetSeconds, Math.max(0, deck.buffer.duration - 0.1)));
     source.addEventListener("ended", () => {
       if (deck.source === source) {
+        source.disconnect();
+        normalization.disconnect();
+        gain.disconnect();
         deck.source = null;
         deck.gain = null;
+        deck.normalization = null;
         deck.startedAt = null;
         deck.startedOffset = deck.buffer?.duration ?? 0;
       }
     });
     deck.source = source;
     deck.gain = gain;
+    deck.normalization = normalization;
     deck.startedAt = startAt;
     deck.startedOffset = offsetSeconds;
   }
@@ -264,14 +287,24 @@ export class DualDeckMixer {
       deck.source.disconnect();
     }
     deck.gain?.disconnect();
+    deck.normalization?.disconnect();
     deck.source = null;
     deck.gain = null;
+    deck.normalization = null;
     deck.startedAt = null;
     deck.startedOffset = 0;
   }
 }
 
-const DEFAULT_ANALYSIS: BeatAnalysis = { bpm: 120, firstBeatSeconds: 0, confidence: 0 };
+const DEFAULT_LOUDNESS: LoudnessAnalysis = {
+  integratedLufs: -14,
+  samplePeakDbfs: -1,
+  recommendedGainDb: 0,
+  targetLufs: -14,
+  ceilingDbfs: -1,
+  analysisVersion: "loudness-v2",
+};
+const DEFAULT_ANALYSIS: BeatAnalysis = { bpm: 120, firstBeatSeconds: 0, confidence: 0, loudness: DEFAULT_LOUDNESS };
 
 function analyzeBeatGrid(buffer: AudioBuffer): BeatAnalysis {
   const samples = buffer.getChannelData(0);
@@ -327,7 +360,72 @@ function analyzeBeatGrid(buffer: AudioBuffer): BeatAnalysis {
     bpm: bestBpm,
     firstBeatSeconds: firstBeatBlock / blockRate,
     confidence,
+    loudness: DEFAULT_LOUDNESS,
   };
+}
+
+function analyzeLoudness(buffer: AudioBuffer): LoudnessAnalysis {
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
+  return analyzeLoudnessSamples(channels, buffer.sampleRate);
+}
+
+export function analyzeLoudnessSamples(channels: Float32Array[], sampleRate: number): LoudnessAnalysis {
+  const targetLufs = -14;
+  const ceilingDbfs = -1;
+  const length = Math.max(0, ...channels.map(({ length }) => length));
+  const blockSize = Math.max(1, Math.round(sampleRate * 0.4));
+  const blockEnergies: number[] = [];
+  let samplePeak = 0;
+
+  for (let start = 0; start < length; start += blockSize) {
+    const end = Math.min(length, start + blockSize);
+    let sumSquares = 0;
+    let sampleCount = 0;
+    for (const channel of channels) {
+      const channelEnd = Math.min(end, channel.length);
+      for (let index = start; index < channelEnd; index += 1) {
+        const sample = channel[index];
+        samplePeak = Math.max(samplePeak, Math.abs(sample));
+        sumSquares += sample * sample;
+        sampleCount += 1;
+      }
+    }
+    if (sampleCount > 0) blockEnergies.push(sumSquares / sampleCount);
+  }
+
+  const aboveAbsoluteGate = blockEnergies.filter((energy) => energyToLufs(energy) >= -70);
+  const absoluteMean = mean(aboveAbsoluteGate);
+  const relativeGate = energyToLufs(absoluteMean) - 10;
+  const gated = aboveAbsoluteGate.filter((energy) => energyToLufs(energy) >= Math.max(-70, relativeGate));
+  const integratedLufs = roundTo(energyToLufs(mean(gated)), 2);
+  const samplePeakDbfs = roundTo(samplePeak > 0 ? 20 * Math.log10(samplePeak) : -120, 2);
+  const requestedGain = clamp(targetLufs - integratedLufs, -12, 8);
+
+  return {
+    integratedLufs,
+    samplePeakDbfs,
+    recommendedGainDb: roundTo(requestedGain, 2),
+    targetLufs,
+    ceilingDbfs,
+    analysisVersion: "loudness-v2",
+  };
+}
+
+function energyToLufs(energy: number): number {
+  return energy > 0 ? -0.691 + 10 * Math.log10(energy) : -70;
+}
+
+function mean(values: number[]): number {
+  return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function roundTo(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function dbToLinear(db: number): number {
+  return 10 ** (db / 20);
 }
 
 export function summarizeWaveform(samples: Float32Array, barCount: number): number[] {

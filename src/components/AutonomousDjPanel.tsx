@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, LoaderCircle, Pause, Play, Radio, SkipBack, SkipForward, Square, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import { calculateCrossfadeDelay, DualDeckMixer, type BeatAnalysis, type DeckSlot, type PlayerSnapshot } from "../audio/dual-deck-mixer";
 import { getUpcoming, insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming, type QueuePlacement } from "../domain/queue-operations";
-import { buildDjSearchPlan, findCandidateArtist, isSearchCandidateAllowed, normalizeSearchText } from "../domain/search-strategy";
+import { assessMusicCandidate, buildDjSearchPlan, findCandidateArtist, isSearchCandidateAllowed, normalizeSearchText } from "../domain/search-strategy";
 import { createSingleFlight } from "../domain/single-flight";
-import type { DjProfile, PreparedYouTubeSource, YouTubeSource } from "../shared/contracts";
+import { displayCreator, displayTitle } from "../i18n/content";
+import { readableError } from "../i18n/errors";
+import { useI18n } from "../i18n/i18n";
+import type { TranslationKey } from "../i18n/locales/es";
+import type { DjProfile, PreparedYouTubeSource, RestorableSessionPhase, SessionSnapshot, YouTubeSource } from "../shared/contracts";
 import { AddTrackDialog } from "./AddTrackDialog";
 import { UpcomingQueue } from "./UpcomingQueue";
 
-type SessionPhase = "IDLE" | "DISCOVERING" | "PREPARING" | "PLAYING" | "PAUSED" | "TRANSITIONING" | "RECOVERING" | "ERROR";
+type SessionPhase = "IDLE" | "RESTORABLE" | "DISCOVERING" | "PREPARING" | "PLAYING" | "PAUSED" | "TRANSITIONING" | "RECOVERING" | "ERROR";
 
 const EMPTY_PLAYER: PlayerSnapshot = { durationSeconds: 0, positionSeconds: 0, playbackRate: 1, waveform: [], bpm: null, playing: false };
 const AUTO_CROSSFADE_SECONDS = 6;
@@ -19,21 +23,24 @@ const RECOVERY_RETRY_MS = 2_000;
 const TRANSITION_RECHECK_MS = 500;
 const RECENT_TRACKS_STORAGE_KEY = "neoares.recent-tracks.v1";
 const recentSessionIdsByDj = new Map<string, string[]>();
+type MessageDescriptor = { key: TranslationKey; values?: Record<string, string | number> };
 
 export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
+  const { t } = useI18n();
   const [mixer] = useState(() => new DualDeckMixer());
   const [phase, setPhase] = useState<SessionPhase>("IDLE");
   const [queue, setQueue] = useState<YouTubeSource[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextReady, setNextReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mixDetail, setMixDetail] = useState("Fade entre canciones · velocidad y tono originales");
+  const [mixDetail, setMixDetail] = useState<MessageDescriptor>({ key: "mix.default" });
   const [player, setPlayer] = useState<PlayerSnapshot>(EMPTY_PLAYER);
   const [seekDraft, setSeekDraft] = useState<number | null>(null);
   const [volume, setVolume] = useState(0.9);
-  const [queueAction, setQueueAction] = useState<string | null>(null);
+  const [queueAction, setQueueAction] = useState<TranslationKey | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [restorableSnapshot, setRestorableSnapshot] = useState<SessionSnapshot | null>(null);
   const queueRef = useRef<YouTubeSource[]>([]);
   const indexRef = useRef(0);
   const currentSlotRef = useRef<DeckSlot>("A");
@@ -47,12 +54,51 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   const nextPreparationRef = useRef<Promise<void> | null>(null);
   const queueActionRef = useRef(false);
   const phaseRef = useRef<SessionPhase>("IDLE");
+  const sessionIdRef = useRef<string | null>(null);
+  const snapshotWriteChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
 
+  useEffect(() => {
+    let active = true;
+    void window.desktop?.sessions.loadActive().then((snapshot) => {
+      if (!active || phaseRef.current !== "IDLE" || !snapshot || snapshot.djId !== dj?.id) return;
+      if (snapshot.djRevision !== dj.revision) {
+        void clearActiveSnapshot();
+        return;
+      }
+      sessionIdRef.current = snapshot.sessionId;
+      discoveryRoundRef.current = snapshot.discoveryRound;
+      queueRef.current = snapshot.queue;
+      indexRef.current = snapshot.currentIndex;
+      setQueue(snapshot.queue);
+      setCurrentIndex(snapshot.currentIndex);
+      setRestorableSnapshot(snapshot);
+      phaseRef.current = "RESTORABLE";
+      setPhase("RESTORABLE");
+    }).catch((cause) => {
+      if (active) setError(readableError(cause, t, "error.sessionFailed"));
+    });
+    return () => {
+      active = false;
+    };
+  }, [dj]);
+
+  useEffect(() => {
+    if (!isPersistablePhase(phase) || !sessionIdRef.current) return;
+    persistActiveSession();
+  }, [currentIndex, phase, queue]);
+
+  useEffect(() => {
+    if (!isPersistablePhase(phase) || !sessionIdRef.current) return;
+    const interval = window.setInterval(() => persistActiveSession(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [phase]);
+
   useEffect(() => () => {
+    persistActiveSession();
     generationRef.current += 1;
     if (timerRef.current) window.clearTimeout(timerRef.current);
     if (preparationTimerRef.current) window.clearTimeout(preparationTimerRef.current);
@@ -90,9 +136,12 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     setQueue([]);
     setCurrentIndex(0);
     setNextReady(false);
-    setMixDetail("Preparando ambos decks para una transición sin alterar el audio…");
+    setMixDetail({ key: "mix.preparing" });
     nextReadyRef.current = false;
     transitioningRef.current = false;
+    setRestorableSnapshot(null);
+    await clearActiveSnapshot();
+    sessionIdRef.current = crypto.randomUUID();
 
     try {
       await mixer.unlock();
@@ -102,7 +151,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       const recentIds = new Set(getRecentTrackIds(dj.id));
       const candidates = await discoverFresh(5, recentIds, 1);
       if (generation !== generationRef.current) return;
-      if (candidates.length < 2) throw new Error("No encontré suficientes canciones para iniciar este DJ. Intenta nuevamente.");
+      if (candidates.length < 2) throw new Error(t("error.notEnoughTracks"));
 
       phaseRef.current = "PREPARING";
       setPhase("PREPARING");
@@ -120,17 +169,68 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       setNextReady(false);
       await mixer.play("A");
       setPlayer(mixer.getPlayerSnapshot("A"));
-      setMixDetail(`Deck A ${initial.analysisA.bpm} BPM · preparando la siguiente canción · reproducción original 100%`);
+      setMixDetail({ key: "mix.deckReady", values: { bpm: initial.analysisA.bpm } });
       phaseRef.current = "PLAYING";
       setPhase("PLAYING");
       scheduleFromCurrent();
       void prepareFollowing("B", 1, generation);
     } catch (cause) {
       if (generation !== generationRef.current) return;
-      setError(readableError(cause));
+      setError(readableError(cause, t, "error.sessionFailed"));
       phaseRef.current = "ERROR";
       setPhase("ERROR");
     }
+  }
+
+  async function continueRestoredSession(): Promise<void> {
+    if (!restorableSnapshot || !window.desktop) return;
+    const snapshot = restorableSnapshot;
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    clearTimer();
+    setError(null);
+    setQueueError(null);
+    phaseRef.current = "PREPARING";
+    setPhase("PREPARING");
+
+    try {
+      await mixer.unlock();
+      const currentSource = queueRef.current[indexRef.current];
+      if (!currentSource) throw new Error(t("error.invalidSavedSession"));
+      await prepareOnDeck(mixer, "A", currentSource, () => generation === generationRef.current);
+      if (generation !== generationRef.current) return;
+      currentSlotRef.current = "A";
+      nextReadyRef.current = false;
+      setNextReady(false);
+      await mixer.play("A", snapshot.positionSeconds);
+      setPlayer(mixer.getPlayerSnapshot("A"));
+      setRestorableSnapshot(null);
+      phaseRef.current = "PLAYING";
+      setPhase("PLAYING");
+      scheduleFromCurrent();
+      void prepareFollowing("B", indexRef.current + 1, generation);
+      void ensureQueueDepth(generation);
+    } catch (cause) {
+      if (generation !== generationRef.current) return;
+      setError(readableError(cause, t, "error.sessionFailed"));
+      phaseRef.current = "RESTORABLE";
+      setPhase("RESTORABLE");
+    }
+  }
+
+  async function discardRestoredSession(): Promise<void> {
+    generationRef.current += 1;
+    sessionIdRef.current = null;
+    setRestorableSnapshot(null);
+    queueRef.current = [];
+    indexRef.current = 0;
+    setQueue([]);
+    setCurrentIndex(0);
+    setPlayer(EMPTY_PLAYER);
+    setError(null);
+    phaseRef.current = "IDLE";
+    setPhase("IDLE");
+    await clearActiveSnapshot();
   }
 
   async function advance(): Promise<void> {
@@ -140,7 +240,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         phaseRef.current = "RECOVERING";
         setPhase("RECOVERING");
       }
-      setQueueError("La siguiente canción todavía se está preparando. NeoAres continuará automáticamente en cuanto esté lista.");
+      setQueueError(t("continuity.nextPreparing"));
       const inactiveSlot: DeckSlot = currentSlotRef.current === "A" ? "B" : "A";
       void prepareFollowing(inactiveSlot, indexRef.current + 1, generationRef.current);
       scheduleTransitionRecheck();
@@ -154,7 +254,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       setNextReady(false);
       phaseRef.current = "RECOVERING";
       setPhase("RECOVERING");
-      setQueueError("Ampliando la cola antes de continuar…");
+      setQueueError(t("continuity.expandingQueue"));
       const inactiveSlot: DeckSlot = currentSlotRef.current === "A" ? "B" : "A";
       void ensureQueueDepth(generation).then(() => {
         if (generation === generationRef.current) return prepareFollowing(inactiveSlot, nextIndex, generation);
@@ -175,7 +275,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
     try {
       const report = await mixer.crossfade(from, to, AUTO_CROSSFADE_SECONDS);
-      setMixDetail(`Fade out + fade in de ${report.durationSeconds.toFixed(1)} s · velocidad y tono originales`);
+      setMixDetail({ key: "mix.completed", values: { seconds: report.durationSeconds.toFixed(1) } });
       indexRef.current = nextIndex;
       currentSlotRef.current = to;
       setCurrentIndex(nextIndex);
@@ -191,7 +291,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       }, report.durationSeconds * 1_000 + 200);
     } catch (cause) {
       transitioningRef.current = false;
-      setError(readableError(cause));
+      setError(readableError(cause, t, "error.sessionFailed"));
       phaseRef.current = "ERROR";
       setPhase("ERROR");
     }
@@ -217,7 +317,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         transitioningRef.current = false;
         phaseRef.current = phaseRef.current === "PAUSED" ? "PAUSED" : "RECOVERING";
         if (phaseRef.current === "RECOVERING") setPhase("RECOVERING");
-        setQueueError("Buscando una alternativa para mantener la música en reproducción…");
+        setQueueError(t("continuity.findingAlternative"));
         schedulePreparationRetry(slot, index, generation);
         return;
       }
@@ -246,7 +346,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
           index,
           slot,
           sourceId: source.id,
-          message: readableError(cause),
+          message: readableError(cause, t),
         });
         queueRef.current = queueRef.current.filter((_, candidateIndex) => candidateIndex !== index);
         setQueue([...queueRef.current]);
@@ -302,7 +402,10 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     setSearchOpen(false);
     setPlayer(EMPTY_PLAYER);
     setSeekDraft(null);
-    setMixDetail("Fade entre canciones · velocidad y tono originales");
+    setMixDetail({ key: "mix.default" });
+    setRestorableSnapshot(null);
+    sessionIdRef.current = null;
+    void clearActiveSnapshot();
     phaseRef.current = "IDLE";
     setPhase("IDLE");
   }
@@ -343,7 +446,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     setVolume(normalized);
   }
 
-  async function runQueueAction(label: string, action: () => Promise<boolean>): Promise<boolean> {
+  async function runQueueAction(label: TranslationKey, action: () => Promise<boolean>): Promise<boolean> {
     if (queueActionRef.current || !dj) return false;
     const generation = generationRef.current;
     queueActionRef.current = true;
@@ -353,7 +456,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     try {
       return await action();
     } catch (cause) {
-      setQueueError(readableError(cause));
+      setQueueError(readableError(cause, t));
       return false;
     } finally {
       queueActionRef.current = false;
@@ -403,37 +506,37 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   }
 
   function moveUpcoming(fromIndex: number, toIndex: number): void {
-    void runQueueAction("Reorganizando la cola…", () => commitUpcoming(reorderUpcoming(getUpcoming(queueRef.current, indexRef.current), fromIndex, toIndex)));
+    void runQueueAction("queueAction.reordering", () => commitUpcoming(reorderUpcoming(getUpcoming(queueRef.current, indexRef.current), fromIndex, toIndex)));
   }
 
   function replaceOne(index: number): void {
-    void runQueueAction("Buscando una canción relacionada…", async () => {
+    void runQueueAction("queueAction.findingRelated", async () => {
       const upcomingTracks = getUpcoming(queueRef.current, indexRef.current);
       const excludedIds = new Set(queueRef.current.map(({ id }) => id));
       for (const id of getRecentTrackIds(dj!.id)) excludedIds.add(id);
       const [replacement] = await discoverFresh(1, excludedIds, 5);
-      if (!replacement) throw new Error("No encontré otra canción relacionada que no estuviera ya en la cola.");
+      if (!replacement) throw new Error(t("error.noReplacement"));
       return commitUpcoming(replaceUpcomingTrack(upcomingTracks, index, replacement));
     });
   }
 
   function refreshAllUpcoming(): void {
-    void runQueueAction("Buscando otras cuatro canciones…", async () => {
+    void runQueueAction("queueAction.findingFour", async () => {
       const excludedIds = new Set(queueRef.current.map(({ id }) => id));
       for (const id of getRecentTrackIds(dj!.id)) excludedIds.add(id);
       const replacements = await discoverFresh(4, excludedIds, 7);
-      if (replacements.length < 4) throw new Error("No encontré cuatro canciones nuevas para reemplazar la cola completa.");
+      if (replacements.length < 4) throw new Error(t("error.noFourReplacements"));
       return commitUpcoming(replacements.slice(0, 4));
     });
   }
 
   function removeOne(index: number): void {
-    void runQueueAction("Actualizando la cola…", () => commitUpcoming(removeUpcomingTrack(getUpcoming(queueRef.current, indexRef.current), index)));
+    void runQueueAction("queueAction.updating", () => commitUpcoming(removeUpcomingTrack(getUpcoming(queueRef.current, indexRef.current), index)));
   }
 
   async function addRequestedTrack(track: YouTubeSource, placement: QueuePlacement): Promise<boolean> {
     const upcomingTracks = getUpcoming(queueRef.current, indexRef.current);
-    if (upcomingTracks.some(({ id }) => id === track.id)) throw new Error("Esa canción ya está entre las próximas.");
+    if (upcomingTracks.some(({ id }) => id === track.id)) throw new Error(t("error.alreadyUpcoming"));
 
     if (placement === "END") {
       const nextUpcoming = insertUpcoming(upcomingTracks, track, "END");
@@ -444,20 +547,20 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     }
 
     if (phaseRef.current === "TRANSITIONING") {
-      throw new Error("La transición ya comenzó. Espera a que la siguiente canción entre y vuelve a intentarlo.");
+      throw new Error(t("error.transitionStarted"));
     }
     if (queueActionRef.current || !nextReadyRef.current) {
-      throw new Error("El siguiente deck todavía se está preparando. Puedes seguir buscando o agregar la canción al final.");
+      throw new Error(t("error.nextDeckPreparing"));
     }
     if (phaseRef.current === "PLAYING") {
       const snapshot = mixer.getPlayerSnapshot(currentSlotRef.current);
       const remainingSeconds = snapshot.durationSeconds - snapshot.positionSeconds;
       if (remainingSeconds <= MIN_NEXT_INSERTION_SECONDS) {
-        throw new Error(`Quedan ${Math.max(0, Math.ceil(remainingSeconds))} segundos y la transición ya está demasiado cerca. Agrégala al final o espera a que comience la siguiente canción.`);
+        throw new Error(t("error.transitionTooClose", { seconds: Math.max(0, Math.ceil(remainingSeconds)) }));
       }
     }
 
-    return runQueueAction(placement === "NEXT" ? "Preparando la canción solicitada…" : "Agregando a la cola…", async () => {
+    return runQueueAction(placement === "NEXT" ? "queueAction.preparingRequested" : "queueAction.adding", async () => {
       return commitUpcoming(insertUpcoming(upcomingTracks, track, placement));
     });
   }
@@ -483,29 +586,36 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   const running = phase === "PLAYING" || phase === "PAUSED" || phase === "TRANSITIONING" || phase === "RECOVERING";
   const audible = running;
   const hasLoadedCurrent = player.durationSeconds > 0 && Boolean(queue[currentIndex]);
-  const current = hasLoadedCurrent ? queue[currentIndex] : null;
-  const upcoming = hasLoadedCurrent ? getUpcoming(queue, currentIndex) : queue;
+  const hasRestorableCurrent = phase === "RESTORABLE" && Boolean(queue[currentIndex]);
+  const current = hasLoadedCurrent || hasRestorableCurrent ? queue[currentIndex] : null;
+  const upcoming = hasLoadedCurrent || hasRestorableCurrent ? getUpcoming(queue, currentIndex) : queue;
   const queueEditingDisabled = !running || !nextReady || phase === "TRANSITIONING" || phase === "RECOVERING" || queueAction !== null;
-  const displayedPosition = seekDraft ?? player.positionSeconds;
-  const progress = player.durationSeconds ? displayedPosition / player.durationSeconds : 0;
+  const displayedDuration = player.durationSeconds || (hasRestorableCurrent ? current?.durationSeconds ?? 0 : 0);
+  const displayedPosition = seekDraft ?? (hasRestorableCurrent ? restorableSnapshot?.positionSeconds ?? 0 : player.positionSeconds);
+  const progress = displayedDuration ? displayedPosition / displayedDuration : 0;
 
   return (
     <>
       <section className="panel autopilot-panel" aria-labelledby="autopilot-title">
       <div className="autopilot-heading">
         <div>
-          <span className="eyebrow">DJ autónomo</span>
-          <h2 id="autopilot-title">{dj?.name ?? "Selecciona un DJ"}</h2>
-          <p>{dj?.description ?? "Elige un perfil para iniciar una sesión."}</p>
+          <span className="eyebrow">{t("session.autonomousDj")}</span>
+          <h2 id="autopilot-title">{dj?.name ?? t("session.selectDj")}</h2>
+          <p>{dj?.description ?? t("session.selectDescription")}</p>
         </div>
         <div className="autopilot-actions">
           <SessionStatus phase={phase} />
-          {running ? (
-            <button className="secondary-button" onClick={stop} type="button"><Square size={14} fill="currentColor" /> Terminar</button>
+          {phase === "RESTORABLE" ? (
+            <>
+              <button className="secondary-button" onClick={() => void discardRestoredSession()} type="button">{t("session.discard")}</button>
+              <button className="primary-button" onClick={() => void continueRestoredSession()} type="button"><Play size={16} fill="currentColor" /> {t("session.continue")}</button>
+            </>
+          ) : running ? (
+            <button className="secondary-button" onClick={stop} type="button"><Square size={14} fill="currentColor" /> {t("session.end")}</button>
           ) : (
             <button className="primary-button" disabled={!dj || busy} onClick={() => void start()} type="button">
               {busy ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}
-              {phase === "DISCOVERING" ? "Buscando música…" : phase === "PREPARING" ? "Preparando decks…" : "Iniciar DJ"}
+              {phase === "DISCOVERING" ? t("session.searchingMusic") : phase === "PREPARING" ? t("session.preparingDecks") : t("session.start")}
             </button>
           )}
         </div>
@@ -516,14 +626,14 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
       <div className="autopilot-body">
         <div className={`now-playing ${audible ? "active" : ""}`}>
-          <div className="now-playing-label"><Radio size={15} /><span>{phase === "RECOVERING" ? "Recuperando continuidad" : audible ? phase === "PAUSED" ? "En pausa" : "Sonando ahora" : busy ? "Preparando primera pista" : "Sesión detenida"}</span></div>
+          <div className="now-playing-label"><Radio size={15} /><span>{phase === "RESTORABLE" ? t("session.saved") : phase === "RECOVERING" ? t("session.recoveringContinuity") : audible ? phase === "PAUSED" ? t("session.paused") : t("session.nowPlaying") : busy ? t("session.preparingFirst") : t("session.stopped")}</span></div>
           {current ? (
             <div className="now-track">
-              <div><strong>{current.title}</strong><span>{current.creator}</span></div>
+              <div><strong>{displayTitle(current.title, t)}</strong><span>{displayCreator(current.creator, t)}</span></div>
               <time>{player.bpm ? `${player.bpm} BPM` : formatDuration(current.durationSeconds)}</time>
             </div>
           ) : (
-            <p>Presiona “Iniciar DJ”. La selección y la cola se construyen automáticamente.</p>
+            <p>{t("session.startHint")}</p>
           )}
           <div className="player-waveform">
             <div aria-hidden="true" className="waveform-bars">
@@ -531,7 +641,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
             </div>
             {player.durationSeconds ? (
               <input
-                aria-label="Posición de la canción"
+                aria-label={t("player.songPosition")}
                 className="waveform-seek"
                 max={player.durationSeconds}
                 min={0}
@@ -545,21 +655,21 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
               />
             ) : null}
           </div>
-          <div className="player-time"><time>{formatDuration(displayedPosition)}</time><time>−{formatDuration(Math.max(0, player.durationSeconds - displayedPosition))}</time><time>{formatDuration(player.durationSeconds)}</time></div>
-          <div className="player-controls" aria-label="Controles de reproducción">
-            <button aria-label="Reiniciar canción" className="transport-button" disabled={!audible || phase === "TRANSITIONING" || queueAction !== null} onClick={() => seekTo(0)} type="button"><SkipBack size={20} fill="currentColor" /></button>
-            <button aria-label={phase === "PAUSED" ? "Continuar" : "Pausar"} className="transport-button primary-transport" disabled={!audible || phase === "TRANSITIONING"} onClick={() => void (phase === "PAUSED" ? resumePlayback() : pausePlayback())} type="button">{phase === "PAUSED" ? <Play size={22} fill="currentColor" /> : <Pause size={22} fill="currentColor" />}</button>
-            <button aria-label="Siguiente y mezclar" className="transport-button" disabled={!running || !nextReady || phase === "TRANSITIONING" || phase === "PAUSED" || queueAction !== null} onClick={() => void advance()} type="button"><SkipForward size={20} fill="currentColor" /></button>
+          <div className="player-time"><time>{formatDuration(displayedPosition)}</time><time>−{formatDuration(Math.max(0, displayedDuration - displayedPosition))}</time><time>{formatDuration(displayedDuration)}</time></div>
+          <div className="player-controls" aria-label={t("player.controls")}>
+            <button aria-label={t("player.restart")} className="transport-button" disabled={!audible || phase === "TRANSITIONING" || queueAction !== null} onClick={() => seekTo(0)} type="button"><SkipBack size={20} fill="currentColor" /></button>
+            <button aria-label={phase === "PAUSED" ? t("player.resume") : t("player.pause")} className="transport-button primary-transport" disabled={!audible || phase === "TRANSITIONING"} onClick={() => void (phase === "PAUSED" ? resumePlayback() : pausePlayback())} type="button">{phase === "PAUSED" ? <Play size={22} fill="currentColor" /> : <Pause size={22} fill="currentColor" />}</button>
+            <button aria-label={t("player.nextAndMix")} className="transport-button" disabled={!running || !nextReady || phase === "TRANSITIONING" || phase === "PAUSED" || queueAction !== null} onClick={() => void advance()} type="button"><SkipForward size={20} fill="currentColor" /></button>
             <div className="volume-control">
-              <button aria-label={volume === 0 ? "Activar sonido" : "Silenciar"} className="volume-button" onClick={() => changeVolume(volume === 0 ? 0.8 : 0)} type="button">{volume === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
-              <input aria-label="Volumen" max={1} min={0} onChange={(event) => changeVolume(Number(event.target.value))} step={0.01} type="range" value={volume} />
+              <button aria-label={volume === 0 ? t("player.unmute") : t("player.mute")} className="volume-button" onClick={() => changeVolume(volume === 0 ? 0.8 : 0)} type="button">{volume === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
+              <input aria-label={t("player.volume")} max={1} min={0} onChange={(event) => changeVolume(Number(event.target.value))} step={0.01} type="range" value={volume} />
             </div>
           </div>
         </div>
 
         <UpcomingQueue
           addDisabled={!running}
-          busyLabel={queueAction}
+          busyLabel={queueAction ? t(queueAction) : null}
           disabled={queueEditingDisabled}
           nextReady={nextReady}
           onAdd={() => setSearchOpen(true)}
@@ -572,8 +682,8 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       </div>
 
       <div className="autopilot-footer">
-        <span>{mixDetail}</span>
-        <span>La siguiente pista permanece preparada en el segundo deck.</span>
+        <span>{t(mixDetail.key, mixDetail.values)}</span>
+        <span>{t("session.nextPrepared")}</span>
       </div>
       </section>
       <AddTrackDialog
@@ -611,12 +721,48 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         return additions.length;
       } catch (cause) {
         if (generation === generationRef.current) {
-          console.warn("[continuity] queue-refill-failed", { generation, message: readableError(cause) });
-          setQueueError("No fue posible ampliar la cola todavía. NeoAres volverá a intentarlo sin detener la sesión.");
+          console.warn("[continuity] queue-refill-failed", { generation, message: readableError(cause, t) });
+          setQueueError(t("continuity.refillFailed"));
         }
         return 0;
       }
     });
+  }
+
+  function persistActiveSession(): void {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId || !dj || !window.desktop || !isPersistablePhase(phaseRef.current)) return;
+    const current = queueRef.current[indexRef.current];
+    if (!current) return;
+    const positionSeconds = mixer.getPlayerSnapshot(currentSlotRef.current).positionSeconds;
+    const snapshot: SessionSnapshot = {
+      schemaVersion: 1,
+      sessionId,
+      djId: dj.id,
+      djRevision: dj.revision,
+      phase: persistedPhase(phaseRef.current),
+      queue: [...queueRef.current],
+      currentIndex: indexRef.current,
+      positionSeconds,
+      discoveryRound: discoveryRoundRef.current,
+      savedAt: new Date().toISOString(),
+      recoverable: true,
+    };
+    snapshotWriteChainRef.current = snapshotWriteChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (sessionIdRef.current !== sessionId) return;
+        await window.desktop!.sessions.saveActive(snapshot);
+      })
+      .catch((cause) => console.warn("[session] snapshot-save-failed", { message: readableError(cause, t) }));
+  }
+
+  async function clearActiveSnapshot(): Promise<void> {
+    if (!window.desktop) return;
+    snapshotWriteChainRef.current = snapshotWriteChainRef.current
+      .catch(() => undefined)
+      .then(() => window.desktop!.sessions.clearActive());
+    await snapshotWriteChainRef.current;
   }
 }
 
@@ -701,9 +847,20 @@ async function prepareOnDeck(
   source: YouTubeSource,
   isCurrent: () => boolean = () => true,
 ): Promise<BeatAnalysis> {
+  const musicAssessment = assessMusicCandidate(source);
+  if (!musicAssessment.allowed) {
+    throw new Error(`CONTENT_REJECTED: ${musicAssessment.negativeReasons.join(", ")}`);
+  }
   const bytes = await readPreparedSource(source);
   if (!isCurrent()) throw new StalePreparationError();
-  return mixer.load(slot, bytes);
+  const cachedLoudness = await window.desktop!.cache.getLoudness(source.id);
+  const analysis = await mixer.load(slot, bytes, cachedLoudness);
+  if (!cachedLoudness) {
+    void window.desktop!.cache.saveLoudness(source.id, analysis.loudness).catch((cause) => {
+      console.warn("[audio] loudness-cache-save-failed", { sourceId: source.id, message: cause instanceof Error ? cause.message : "UNKNOWN" });
+    });
+  }
+  return analysis;
 }
 
 async function readPreparedSource(source: YouTubeSource): Promise<Uint8Array> {
@@ -734,17 +891,29 @@ async function prepareInitialDeck(mixer: DualDeckMixer, candidates: YouTubeSourc
     }
   }
 
-  throw new Error("La fuente no permitió preparar ninguna canción de esta selección.");
+  throw new Error("NO_PLAYABLE_TRACK");
 }
 
 function SessionStatus({ phase }: { phase: SessionPhase }) {
-  if (phase === "PLAYING") return <span className="session-chip live"><Radio size={12} /> Al aire</span>;
-  if (phase === "PAUSED") return <span className="session-chip"><Pause size={12} /> En pausa</span>;
-  if (phase === "TRANSITIONING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> Mezclando</span>;
-  if (phase === "RECOVERING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> Recuperando</span>;
-  if (phase === "DISCOVERING" || phase === "PREPARING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> Preparando</span>;
-  if (phase === "ERROR") return <span className="session-chip error"><CircleAlert size={12} /> Error</span>;
-  return <span className="session-chip"><CircleCheck size={12} /> Listo para iniciar</span>;
+  const { t } = useI18n();
+  if (phase === "RESTORABLE") return <span className="session-chip"><Pause size={12} /> {t("session.saved")}</span>;
+  if (phase === "PLAYING") return <span className="session-chip live"><Radio size={12} /> {t("session.onAir")}</span>;
+  if (phase === "PAUSED") return <span className="session-chip"><Pause size={12} /> {t("session.paused")}</span>;
+  if (phase === "TRANSITIONING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> {t("session.mixing")}</span>;
+  if (phase === "RECOVERING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> {t("session.recovering")}</span>;
+  if (phase === "DISCOVERING" || phase === "PREPARING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> {t("session.preparing")}</span>;
+  if (phase === "ERROR") return <span className="session-chip error"><CircleAlert size={12} /> {t("common.error")}</span>;
+  return <span className="session-chip"><CircleCheck size={12} /> {t("session.readyToStart")}</span>;
+}
+
+function isPersistablePhase(phase: SessionPhase): phase is "PLAYING" | "PAUSED" | "TRANSITIONING" | "RECOVERING" {
+  return phase === "PLAYING" || phase === "PAUSED" || phase === "TRANSITIONING" || phase === "RECOVERING";
+}
+
+function persistedPhase(phase: SessionPhase): RestorableSessionPhase {
+  if (phase === "PAUSED") return "PAUSED";
+  if (phase === "RECOVERING") return "RECOVERING";
+  return "PLAYING";
 }
 
 function formatDuration(seconds: number): string {
@@ -752,18 +921,13 @@ function formatDuration(seconds: number): string {
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }
 
-function readableError(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : "La sesión no pudo continuar.";
-  return message.replace(/^Error invoking remote method '[^']+': Error: /, "");
-}
-
 function isSupersededDeckLoad(cause: unknown): boolean {
-  return cause instanceof Error && cause.message.includes("fue reemplazada por una solicitud más reciente");
+  return cause instanceof Error && cause.message.includes("DECK_LOAD_SUPERSEDED");
 }
 
 class StalePreparationError extends Error {
   constructor() {
-    super("La preparación pertenece a una sesión anterior.");
+    super("STALE_PREPARATION");
     this.name = "StalePreparationError";
   }
 }

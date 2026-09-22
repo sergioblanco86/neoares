@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, ListEnd, ListStart, LoaderCircle, Music2, Plus, Search, X } from "lucide-react";
 import type { QueuePlacement } from "../domain/queue-operations";
+import { displayCreator, displayTitle } from "../i18n/content";
+import { readableError } from "../i18n/errors";
+import { useI18n } from "../i18n/i18n";
 import type { YouTubeSource } from "../shared/contracts";
 
 type AddTrackDialogProps = {
@@ -11,6 +14,7 @@ type AddTrackDialogProps = {
 };
 
 export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDialogProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<YouTubeSource[]>([]);
   const [placement, setPlacement] = useState<QueuePlacement>("END");
@@ -37,7 +41,7 @@ export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDi
     try {
       setResults(await window.desktop.sources.search(query.trim(), 10));
     } catch (cause) {
-      setError(readableError(cause));
+      setError(readableError(cause, t, "error.searchFailed"));
     } finally {
       setSearching(false);
     }
@@ -47,9 +51,9 @@ export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDi
     setPendingIds((current) => new Set([...current, track.id]));
     setError(null);
     try {
-      if (!await onAdd(track, placement)) setError("No se pudo agregar la canción en este momento.");
+      if (!await onAdd(track, placement)) setError(t("search.addFailed"));
     } catch (cause) {
-      setError(readableError(cause));
+      setError(readableError(cause, t));
     } finally {
       setPendingIds((current) => {
         const next = new Set(current);
@@ -63,18 +67,18 @@ export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDi
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section aria-labelledby="add-track-title" aria-modal="true" className="dialog track-search-dialog" role="dialog">
         <div className="dialog-heading">
-          <div><span className="eyebrow">Catálogo musical</span><h2 id="add-track-title">Agregar canciones</h2></div>
-          <button aria-label="Cerrar" className="icon-button" onClick={onClose} type="button"><X size={18} /></button>
+          <div><span className="eyebrow">{t("search.catalog")}</span><h2 id="add-track-title">{t("search.addSongs")}</h2></div>
+          <button aria-label={t("common.close")} className="icon-button" onClick={onClose} type="button"><X size={18} /></button>
         </div>
 
         <form className="track-search-form" onSubmit={(event) => void search(event)}>
-          <div className="track-search-input"><Search size={16} /><input autoFocus onChange={(event) => setQuery(event.target.value)} placeholder="Busca una canción o artista…" value={query} /></div>
-          <button className="primary-button" disabled={searching || query.trim().length < 2} type="submit">{searching ? <LoaderCircle className="spin" size={15} /> : <Search size={15} />} Buscar</button>
+          <div className="track-search-input"><Search size={16} /><input autoFocus onChange={(event) => setQuery(event.target.value)} placeholder={t("search.placeholder")} value={query} /></div>
+          <button className="primary-button" disabled={searching || query.trim().length < 2} type="submit">{searching ? <LoaderCircle className="spin" size={15} /> : <Search size={15} />} {t("common.search")}</button>
         </form>
 
-        <div className="placement-picker" aria-label="Dónde agregar la canción" role="group">
-          <button className={placement === "NEXT" ? "active" : ""} onClick={() => setPlacement("NEXT")} type="button"><ListStart size={14} /> Después de la actual</button>
-          <button className={placement === "END" ? "active" : ""} onClick={() => setPlacement("END")} type="button"><ListEnd size={14} /> Al final</button>
+        <div className="placement-picker" aria-label={t("search.placementLabel")} role="group">
+          <button className={placement === "NEXT" ? "active" : ""} onClick={() => setPlacement("NEXT")} type="button"><ListStart size={14} /> {t("search.afterCurrent")}</button>
+          <button className={placement === "END" ? "active" : ""} onClick={() => setPlacement("END")} type="button"><ListEnd size={14} /> {t("search.atEnd")}</button>
         </div>
 
         {error ? <div className="form-error" role="alert">{error}</div> : null}
@@ -88,13 +92,13 @@ export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDi
                 <div className="track-thumbnail">
                   {track.thumbnailUrl ? <img alt="" loading="lazy" referrerPolicy="no-referrer" src={track.thumbnailUrl} /> : <Music2 size={18} />}
                 </div>
-                <div><strong>{track.title}</strong><span>{track.creator} · {formatDuration(track.durationSeconds)}</span></div>
+                <div><strong>{displayTitle(track.title, t)}</strong><span>{displayCreator(track.creator, t)} · {formatDuration(track.durationSeconds)}</span></div>
                 <button className="secondary-button" disabled={alreadyAdded || isPending} onClick={() => void add(track)} type="button">
-                  {alreadyAdded ? <><Check size={14} /> En cola</> : isPending ? <><LoaderCircle className="spin" size={14} /> Agregando</> : <><Plus size={14} /> Agregar</>}
+                  {alreadyAdded ? <><Check size={14} /> {t("search.inQueue")}</> : isPending ? <><LoaderCircle className="spin" size={14} /> {t("search.adding")}</> : <><Plus size={14} /> {t("common.add")}</>}
                 </button>
               </article>
             );
-          }) : <div className="track-search-empty"><Search size={22} /><span>{searching ? "Buscando canciones…" : "Busca por canción, artista o ambos."}</span></div>}
+          }) : <div className="track-search-empty"><Search size={22} /><span>{searching ? t("search.searching") : t("search.empty")}</span></div>}
         </div>
       </section>
     </div>
@@ -104,9 +108,4 @@ export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDi
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
-}
-
-function readableError(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : "No se pudo completar la búsqueda.";
-  return message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 }

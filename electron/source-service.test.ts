@@ -44,7 +44,7 @@ describe("SourceService.prepare", () => {
       creator: "Invalid",
       durationSeconds: 0,
       thumbnailUrl: null,
-    })).rejects.toThrow("fuente válida");
+    })).rejects.toThrow("SOURCE_REFERENCE_INVALID");
   });
 });
 

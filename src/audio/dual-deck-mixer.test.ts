@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateCrossfadeDelay, createTransitionPlan, summarizeWaveform } from "./dual-deck-mixer";
+import { analyzeLoudnessSamples, calculateCrossfadeDelay, createTransitionPlan, summarizeWaveform } from "./dual-deck-mixer";
 
 describe("createTransitionPlan", () => {
   it("preserves original speed even when tempos are close", () => {
@@ -49,5 +49,36 @@ describe("summarizeWaveform", () => {
     expect(waveform).toHaveLength(2);
     expect(waveform[0]).toBeCloseTo(0.125);
     expect(waveform[1]).toBe(1);
+  });
+});
+
+describe("analyzeLoudnessSamples", () => {
+  it("recommends more gain for a quieter recording", () => {
+    const sampleRate = 1_000;
+    const quiet = Float32Array.from({ length: sampleRate }, (_, index) => 0.05 * Math.sin(index));
+    const loud = Float32Array.from({ length: sampleRate }, (_, index) => 0.3 * Math.sin(index));
+
+    const quietAnalysis = analyzeLoudnessSamples([quiet], sampleRate);
+    const loudAnalysis = analyzeLoudnessSamples([loud], sampleRate);
+
+    expect(quietAnalysis.integratedLufs).toBeLessThan(loudAnalysis.integratedLufs);
+    expect(quietAnalysis.recommendedGainDb).toBeGreaterThan(loudAnalysis.recommendedGainDb);
+    expect(quietAnalysis.targetLufs).toBe(-14);
+  });
+
+  it("normalizes perceived loudness while reporting peaks to the safety limiter", () => {
+    const samples = new Float32Array(1_000).fill(0.01);
+    samples[500] = 0.95;
+
+    const analysis = analyzeLoudnessSamples([samples], 1_000);
+
+    expect(analysis.samplePeakDbfs).toBeGreaterThan(-1);
+    expect(analysis.recommendedGainDb).toBeGreaterThan(0);
+    expect(analysis.ceilingDbfs).toBe(-1);
+  });
+
+  it("returns finite conservative values for silence", () => {
+    const analysis = analyzeLoudnessSamples([new Float32Array(1_000)], 1_000);
+    expect(analysis).toMatchObject({ integratedLufs: -70, samplePeakDbfs: -120, recommendedGainDb: 8 });
   });
 });

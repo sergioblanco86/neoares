@@ -30,7 +30,7 @@ export class DjRepository {
       }),
     );
 
-    return profiles.sort((a, b) => a.name.localeCompare(b.name, "es"));
+    return profiles.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async save(profile: DjProfile): Promise<DjProfile> {
@@ -73,9 +73,10 @@ export class DjRepository {
   private assertValid(value: unknown): asserts value is DjProfile {
     if (!this.validateDj(value)) {
       const detail = this.validateDj.errors
-        ?.map((error) => `${error.instancePath || "/"} ${error.message ?? "es inválido"}`)
+        ?.map((error) => `${error.instancePath || "/"} ${error.message ?? "is invalid"}`)
         .join("; ");
-      throw new Error(`DJ_PROFILE_INVALID: ${detail ?? "contrato inválido"}`);
+      console.warn("[profiles] invalid-profile", { detail });
+      throw new Error("DJ_PROFILE_INVALID");
     }
   }
 }

@@ -1,20 +1,22 @@
 import { CircleCheck, Clock4, GripVertical, ListMusic, LoaderCircle } from "lucide-react";
+import { useI18n } from "../i18n/i18n";
 
 const queue = [
-  { title: "Rebelión", artist: "Joe Arroyo", bpm: "104 BPM", state: "Preparada", ready: true },
-  { title: "Cali Pachanguero", artist: "Grupo Niche", bpm: "101 BPM", state: "Analizando", ready: false },
-  { title: "Periódico de Ayer", artist: "Héctor Lavoe", bpm: "98 BPM", state: "En reserva", ready: false },
+  { title: "Rebelión", artist: "Joe Arroyo", bpm: "104 BPM", state: "ready", ready: true },
+  { title: "Cali Pachanguero", artist: "Grupo Niche", bpm: "101 BPM", state: "analyzing", ready: false },
+  { title: "Periódico de Ayer", artist: "Héctor Lavoe", bpm: "98 BPM", state: "reserve", ready: false },
 ];
 
 export function QueuePanel() {
+  const { t } = useI18n();
   return (
     <section className="panel queue-panel" aria-labelledby="queue-title">
       <div className="panel-heading compact">
         <div>
-          <span className="eyebrow">Continuidad</span>
-          <h2 id="queue-title">Próximas</h2>
+          <span className="eyebrow">{t("queuePanel.continuity")}</span>
+          <h2 id="queue-title">{t("queue.upNext")}</h2>
         </div>
-        <span className="queue-count">3 en cola</span>
+        <span className="queue-count">{t("queue.count", { count: 3 })}</span>
       </div>
 
       <div className="queue-list">
@@ -30,7 +32,7 @@ export function QueuePanel() {
               <span>{item.bpm}</span>
               <small className={item.ready ? "ready" : ""}>
                 {item.ready ? <CircleCheck size={13} /> : index === 1 ? <LoaderCircle size={13} /> : <Clock4 size={13} />}
-                {item.state}
+                {item.state === "ready" ? t("queue.ready") : item.state === "analyzing" ? t("queuePanel.analyzing") : t("queuePanel.reserve")}
               </small>
             </div>
           </div>
@@ -39,7 +41,7 @@ export function QueuePanel() {
 
       <div className="queue-note">
         <ListMusic size={16} />
-        El orquestador conservará dos pistas listas antes de cada transición.
+        {t("queuePanel.note")}
       </div>
     </section>
   );

@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { parseYouTubeUrl } from "../src/adapters/youtube/parse-youtube-url";
 import type { PreparedYouTubeSource, SourceRequestScope, YouTubeSource } from "../src/shared/contracts";
+import type { MediaCache } from "./media-cache";
 
 type YtDlpMetadata = {
   id?: unknown;
@@ -40,6 +41,7 @@ export class SourceService {
   constructor(
     private readonly cacheRoot: string,
     private readonly executableOverride?: string,
+    private readonly mediaCache?: MediaCache,
   ) {}
 
   async search(queryInput: string, requestedLimit: number, scope: SourceRequestScope = "user"): Promise<YouTubeSource[]> {
@@ -49,7 +51,7 @@ export class SourceService {
   async searchMany(queryInputs: string[], requestedLimit: number, scope: SourceRequestScope = "user"): Promise<YouTubeSource[][]> {
     const queries = [...new Set(queryInputs.map((query) => query.trim().slice(0, 160)).filter(Boolean))].slice(0, 8);
     const limit = Math.min(10, Math.max(1, Math.trunc(requestedLimit)));
-    if (queries.length === 0) throw new Error("La búsqueda del DJ está vacía.");
+    if (queries.length === 0) throw new Error("SOURCE_SEARCH_EMPTY");
 
     const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
     const output = await run(ytDlp, [
@@ -88,7 +90,7 @@ export class SourceService {
   async inspect(input: string, scope: SourceRequestScope = "user"): Promise<YouTubeSource> {
     const reference = parseYouTubeUrl(input);
     if (!reference || reference.kind !== "VIDEO") {
-      throw new Error("Pega un enlace válido a un video del catálogo.");
+      throw new Error("SOURCE_URL_INVALID");
     }
 
     const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
@@ -104,7 +106,7 @@ export class SourceService {
     try {
       metadata = JSON.parse(output) as YtDlpMetadata;
     } catch {
-      throw new Error("La fuente respondió con metadatos que no pudimos leer.");
+      throw new Error("SOURCE_METADATA_INVALID");
     }
 
     return normalizeMetadata(metadata, reference.id, reference.canonicalUrl);
@@ -112,62 +114,74 @@ export class SourceService {
 
   async prepare(input: YouTubeSource, scope: SourceRequestScope = "user"): Promise<PreparedYouTubeSource> {
     const metadata = normalizePreparationSource(input);
-    const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
-    await mkdir(this.cacheRoot, { recursive: true });
+    this.mediaCache?.acquire(metadata.id);
+    try {
+      const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
+      await mkdir(this.cacheRoot, { recursive: true });
 
-    let filePath = await findCachedAudio(this.cacheRoot, metadata.id);
-    if (!filePath) {
-      const outputTemplate = path.join(this.cacheRoot, `${metadata.id}.%(ext)s`);
-      const output = await run(ytDlp, [
-        "--no-playlist",
-        "--no-warnings",
-        "--format",
-        "bestaudio[ext=m4a]/bestaudio",
-        "--socket-timeout",
-        "8",
-        "--retries",
-        "1",
-        "--fragment-retries",
-        "1",
-        "--js-runtimes",
-        "node",
-        "--output",
-        outputTemplate,
-        "--print",
-        "after_move:filepath",
-        metadata.canonicalUrl,
-      ], "download", DOWNLOAD_TIMEOUT_MS, this.#activeProcesses, scope);
+      let filePath = await findCachedAudio(this.cacheRoot, metadata.id);
+      if (!filePath) {
+        const outputTemplate = path.join(this.cacheRoot, `${metadata.id}.%(ext)s`);
+        const output = await run(ytDlp, [
+          "--no-playlist",
+          "--no-warnings",
+          "--format",
+          "bestaudio[ext=m4a]/bestaudio",
+          "--socket-timeout",
+          "8",
+          "--retries",
+          "1",
+          "--fragment-retries",
+          "1",
+          "--js-runtimes",
+          "node",
+          "--output",
+          outputTemplate,
+          "--print",
+          "after_move:filepath",
+          metadata.canonicalUrl,
+        ], "download", DOWNLOAD_TIMEOUT_MS, this.#activeProcesses, scope);
 
-      const reportedPath = output.trim().split(/\r?\n/).filter(Boolean).at(-1);
-      if (!reportedPath) throw new Error("La preparación terminó sin producir un archivo de audio.");
-      filePath = path.resolve(reportedPath);
+        const reportedPath = output.trim().split(/\r?\n/).filter(Boolean).at(-1);
+        if (!reportedPath) throw new Error("SOURCE_AUDIO_FILE_MISSING");
+        filePath = path.resolve(reportedPath);
+      }
+
+      const cacheRoot = path.resolve(this.cacheRoot);
+      if (path.dirname(filePath) !== cacheRoot) {
+        throw new Error("SOURCE_PATH_OUTSIDE_CACHE");
+      }
+
+      const fileStats = await stat(filePath);
+      await this.mediaCache?.record(metadata.id, filePath);
+      const leaseId = randomUUID();
+      const source: PreparedYouTubeSource = {
+        ...metadata,
+        leaseId,
+        byteLength: fileStats.size,
+        format: extensionFormat(filePath),
+      };
+      this.#leases.set(leaseId, { filePath, source });
+      return source;
+    } catch (cause) {
+      this.mediaCache?.release(metadata.id);
+      throw cause;
     }
-
-    const cacheRoot = path.resolve(this.cacheRoot);
-    if (path.dirname(filePath) !== cacheRoot) {
-      throw new Error("La fuente produjo una ruta fuera del caché permitido.");
-    }
-
-    const fileStats = await stat(filePath);
-    const leaseId = randomUUID();
-    const source: PreparedYouTubeSource = {
-      ...metadata,
-      leaseId,
-      byteLength: fileStats.size,
-      format: extensionFormat(filePath),
-    };
-    this.#leases.set(leaseId, { filePath, source });
-    return source;
   }
 
   async read(leaseId: string): Promise<Uint8Array> {
     const lease = this.#leases.get(leaseId);
-    if (!lease) throw new Error("La fuente preparada ya no está disponible.");
-    return new Uint8Array(await readFile(lease.filePath));
+    if (!lease) throw new Error("SOURCE_PREPARED_UNAVAILABLE");
+    const bytes = new Uint8Array(await readFile(lease.filePath));
+    await this.mediaCache?.touch(lease.source.id);
+    return bytes;
   }
 
   release(leaseId: string): void {
+    const lease = this.#leases.get(leaseId);
+    if (!lease) return;
     this.#leases.delete(leaseId);
+    this.mediaCache?.release(lease.source.id);
   }
 
   cancelPlayback(): number {
@@ -196,9 +210,9 @@ function normalizePreparationSource(input: YouTubeSource): YouTubeSource {
     ? input.canonicalUrl
     : "";
   const reference = parseYouTubeUrl(canonicalUrl);
-  if (!reference || reference.kind !== "VIDEO") throw new Error("La canción seleccionada no tiene una fuente válida.");
-  const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : "Video sin título";
-  const creator = typeof input.creator === "string" && input.creator.trim() ? input.creator.trim() : "Catálogo musical";
+  if (!reference || reference.kind !== "VIDEO") throw new Error("SOURCE_REFERENCE_INVALID");
+  const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : "UNTITLED_VIDEO";
+  const creator = typeof input.creator === "string" && input.creator.trim() ? input.creator.trim() : "UNKNOWN_CREATOR";
   const durationSeconds = typeof input.durationSeconds === "number" && Number.isFinite(input.durationSeconds)
     ? Math.max(0, input.durationSeconds)
     : 0;
@@ -221,10 +235,10 @@ async function findCachedAudio(cacheRoot: string, id: string): Promise<string | 
 
 function normalizeMetadata(metadata: YtDlpMetadata, fallbackId: string, canonicalUrl: string): YouTubeSource {
   const id = typeof metadata.id === "string" ? metadata.id : fallbackId;
-  const title = typeof metadata.title === "string" ? metadata.title : "Video sin título";
+  const title = typeof metadata.title === "string" ? metadata.title : "UNTITLED_VIDEO";
   const creator = typeof metadata.uploader === "string"
     ? metadata.uploader
-    : typeof metadata.channel === "string" ? metadata.channel : "Catálogo musical";
+    : typeof metadata.channel === "string" ? metadata.channel : "UNKNOWN_CREATOR";
   const durationSeconds = typeof metadata.duration === "number" && Number.isFinite(metadata.duration)
     ? metadata.duration
     : 0;
@@ -313,16 +327,14 @@ function run(
         complete(partialOutput);
         return;
       }
-      fail(new Error(operation === "download"
-        ? "La canción tardó demasiado en prepararse y fue descartada."
-        : "La búsqueda tardó demasiado. Intenta nuevamente."), { reason: "timeout" });
+      fail(new Error(operation === "download" ? "SOURCE_PREPARATION_TIMEOUT" : "SOURCE_SEARCH_TIMEOUT"), { reason: "timeout" });
     }, timeoutMs);
 
     const collect = (target: Buffer[]) => (chunk: Buffer) => {
       totalBytes += chunk.length;
       if (totalBytes > MAX_OUTPUT_BYTES) {
         terminateProcessTree(child.pid);
-        fail(new Error("La herramienta local produjo una respuesta demasiado grande."), { reason: "output-limit" });
+        fail(new Error("SOURCE_RESPONSE_TOO_LARGE"), { reason: "output-limit" });
         return;
       }
       target.push(chunk);
@@ -331,7 +343,7 @@ function run(
     child.stdout.on("data", collect(stdout));
     child.stderr.on("data", collect(stderr));
     child.once("error", (cause) => {
-      fail(new Error(`No se pudo ejecutar ${path.basename(executable)}: ${cause.message}`), { reason: cause.message });
+      fail(new Error("SOURCE_TOOL_FAILED"), { executable: path.basename(executable), reason: cause.message });
     });
     child.once("close", (code) => {
       if (settled) return;
@@ -346,7 +358,7 @@ function run(
         return;
       }
       const detail = Buffer.concat(stderr).toString("utf8").trim().split(/\r?\n/).at(-1);
-      fail(new Error(detail || `${path.basename(executable)} terminó con código ${String(code)}.`), { code });
+      fail(new Error("SOURCE_TOOL_FAILED"), { code, detail, executable: path.basename(executable) });
     });
   });
 }

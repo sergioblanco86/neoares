@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { createDefaultDj } from "../domain/default-djs";
+import { useI18n } from "../i18n/i18n";
 import type { DjProfile } from "../shared/contracts";
 
 type CreateDjDialogProps = {
@@ -12,6 +13,7 @@ type CreateDjDialogProps = {
 };
 
 export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }: CreateDjDialogProps) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [genres, setGenres] = useState("");
@@ -43,7 +45,7 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
     const parsedEndYear = parseYear(endYear);
 
     if (parsedStartYear !== null && parsedEndYear !== null && parsedStartYear > parsedEndYear) {
-      setFormError("El año inicial debe ser menor o igual al año final.");
+      setFormError(t("djEditor.yearError"));
       return;
     }
 
@@ -92,61 +94,61 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
       <section aria-labelledby="create-dj-title" aria-modal="true" className="dialog dj-editor-dialog" role="dialog">
         <div className="dialog-heading">
           <div>
-            <span className="eyebrow">{initialProfile ? "Configuración del perfil" : "Nuevo perfil"}</span>
-            <h2 id="create-dj-title">{initialProfile ? "Editar DJ" : "Crear un DJ"}</h2>
+            <span className="eyebrow">{initialProfile ? t("djEditor.editEyebrow") : t("djEditor.newEyebrow")}</span>
+            <h2 id="create-dj-title">{initialProfile ? t("djEditor.editTitle") : t("djEditor.createTitle")}</h2>
           </div>
-          <button aria-label="Cerrar" className="icon-button" onClick={onClose} type="button">
+          <button aria-label={t("common.close")} className="icon-button" onClick={onClose} type="button">
             <X size={18} />
           </button>
         </div>
         <form onSubmit={(event) => void submit(event)}>
           <div className="dj-form-grid">
             <label>
-              Nombre
+              {t("djEditor.name")}
               <input autoFocus maxLength={100} onChange={(event) => setName(event.target.value)} placeholder="DJ MTV 2000" required value={name} />
             </label>
             <label>
-              Géneros
-              <input onChange={(event) => setGenres(event.target.value)} placeholder="Pop punk, nu metal, rock alternativo" required value={genres} />
-              <small>Sepáralos con comas.</small>
+              {t("djEditor.genres")}
+              <input onChange={(event) => setGenres(event.target.value)} placeholder={t("djEditor.genresPlaceholder")} required value={genres} />
+              <small>{t("djEditor.commaSeparated")}</small>
             </label>
           </div>
 
           <label>
-            Intención
-            <textarea maxLength={1200} onChange={(event) => setDescription(event.target.value)} placeholder="Describe la ocasión, el ambiente y cómo debe evolucionar…" required rows={3} value={description} />
+            {t("djEditor.intent")}
+            <textarea maxLength={1200} onChange={(event) => setDescription(event.target.value)} placeholder={t("djEditor.intentPlaceholder")} required rows={3} value={description} />
           </label>
 
           <label>
-            Artistas relacionados o de referencia
+            {t("djEditor.artists")}
             <input onChange={(event) => setArtists(event.target.value)} placeholder="Blink-182, Linkin Park, Sum 41, The Offspring" value={artists} />
-            <small>Son anclas, no una lista cerrada: el DJ las combina con artistas relacionados de los géneros.</small>
+            <small>{t("djEditor.artistsHint")}</small>
           </label>
 
           <fieldset className="era-fieldset">
-            <legend>Era</legend>
+            <legend>{t("djEditor.era")}</legend>
             <div className="era-fields">
               <label>
-                Contexto
-                <input maxLength={100} onChange={(event) => setEraLabel(event.target.value)} placeholder="MTV, noventas, verbena…" value={eraLabel} />
+                {t("djEditor.context")}
+                <input maxLength={100} onChange={(event) => setEraLabel(event.target.value)} placeholder={t("djEditor.contextPlaceholder")} value={eraLabel} />
               </label>
               <label>
-                Desde
+                {t("djEditor.from")}
                 <input inputMode="numeric" max={2100} min={1900} onChange={(event) => setStartYear(event.target.value)} placeholder="1999" type="number" value={startYear} />
               </label>
               <label>
-                Hasta
+                {t("djEditor.to")}
                 <input inputMode="numeric" max={2100} min={1900} onChange={(event) => setEndYear(event.target.value)} placeholder="2006" type="number" value={endYear} />
               </label>
             </div>
-            <small>La era orienta cada búsqueda y rota por años del rango para evitar una cola monótona.</small>
+            <small>{t("djEditor.eraHint")}</small>
           </fieldset>
 
           {formError ? <div className="form-error" role="alert">{formError}</div> : null}
 
           <div className="dialog-actions">
-            <button className="ghost-button" onClick={onClose} type="button">Cancelar</button>
-            <button className="primary-button" disabled={saving} type="submit">{saving ? "Guardando…" : initialProfile ? "Guardar cambios" : "Crear DJ"}</button>
+            <button className="ghost-button" onClick={onClose} type="button">{t("common.cancel")}</button>
+            <button className="primary-button" disabled={saving} type="submit">{saving ? t("djEditor.saving") : initialProfile ? t("djEditor.saveChanges") : t("djEditor.create")}</button>
           </div>
         </form>
       </section>

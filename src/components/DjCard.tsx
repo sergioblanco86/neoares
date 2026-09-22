@@ -1,5 +1,6 @@
 import { ArrowUpRight, AudioLines, Clock3, UsersRound } from "lucide-react";
 import type { DjProfile } from "../shared/contracts";
+import { useI18n, type Translate } from "../i18n/i18n";
 
 type DjCardProps = {
   dj: DjProfile;
@@ -8,6 +9,7 @@ type DjCardProps = {
 };
 
 export function DjCard({ dj, selected, onSelect }: DjCardProps) {
+  const { t } = useI18n();
   return (
     <button className={`dj-card${selected ? " selected" : ""}`} onClick={() => onSelect(dj)} type="button">
       <div className="dj-card-heading">
@@ -17,11 +19,11 @@ export function DjCard({ dj, selected, onSelect }: DjCardProps) {
         <ArrowUpRight className="card-arrow" size={18} aria-hidden="true" />
       </div>
       <div>
-        <span className="eyebrow">DJ personal</span>
+        <span className="eyebrow">{t("sidebar.personalDj")}</span>
         <h3>{dj.name}</h3>
         <p>{dj.description}</p>
       </div>
-      <div className="genre-row" aria-label="Géneros">
+      <div className="genre-row" aria-label={t("djCard.genres")}>
         {dj.intent.genres.slice(0, 3).map((genre) => (
           <span key={genre}>{genre}</span>
         ))}
@@ -33,21 +35,21 @@ export function DjCard({ dj, selected, onSelect }: DjCardProps) {
       ) : null}
       <div className="dj-card-footer">
         <span>
-          <Clock3 size={14} /> {formatEra(dj)}
+          <Clock3 size={14} /> {formatEra(dj, t)}
         </span>
         <span>
-          <UsersRound size={14} /> {dj.seeds.artists.length ? `${dj.seeds.artists.length} artistas guía` : "Catálogo relacionado"}
+          <UsersRound size={14} /> {dj.seeds.artists.length ? t("djCard.guideArtists", { count: dj.seeds.artists.length }) : t("djCard.relatedCatalog")}
         </span>
       </div>
     </button>
   );
 }
 
-function formatEra(dj: DjProfile): string {
+function formatEra(dj: DjProfile, t: Translate): string {
   const era = dj.intent.era;
-  if (!era) return "Todas las épocas";
+  if (!era) return t("djCard.allEras");
   const years = era.startYear === era.endYear && era.startYear !== null
     ? String(era.startYear)
     : [era.startYear, era.endYear].filter((year) => year !== null).join("–");
-  return [era.label, years].filter(Boolean).join(" · ") || "Todas las épocas";
+  return [era.label, years].filter(Boolean).join(" · ") || t("djCard.allEras");
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultDj } from "./default-djs";
-import { buildDjSearchPlan, isSearchCandidateAllowed } from "./search-strategy";
+import { assessMusicCandidate, buildDjSearchPlan, isSearchCandidateAllowed } from "./search-strategy";
 
 const punkDj = createDefaultDj({
   name: "Punk y Ska",
@@ -126,5 +126,36 @@ describe("DJ search strategy", () => {
       durationSeconds: 194,
       thumbnailUrl: null,
     }, plan)).toBe(false);
+  });
+
+  it("rejects interviews and documentaries even when the artist matches exactly", () => {
+    const plan = buildDjSearchPlan(punkDj, 0);
+    const candidate = (title: string) => ({
+      id: title.padEnd(11, "x").slice(0, 11),
+      canonicalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+      title,
+      creator: "Ramones",
+      durationSeconds: 220,
+      thumbnailUrl: null,
+    });
+
+    expect(isSearchCandidateAllowed(punkDj, candidate("Ramones Full Interview 1978"), plan)).toBe(false);
+    expect(isSearchCandidateAllowed(punkDj, candidate("The Story of Ramones - Documentary"), plan)).toBe(false);
+    expect(assessMusicCandidate(candidate("Ramones Full Interview 1978"))).toMatchObject({
+      allowed: false,
+      confidence: "LOW",
+      contentType: "SPOKEN_CONTENT",
+    });
+  });
+
+  it("recognizes strong evidence from official and lyric music titles", () => {
+    expect(assessMusicCandidate({
+      id: "abcdefghijk",
+      canonicalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+      title: "Ramones - Blitzkrieg Bop (Official Music Video)",
+      creator: "RHINO",
+      durationSeconds: 134,
+      thumbnailUrl: null,
+    })).toMatchObject({ allowed: true, confidence: "HIGH", contentType: "MUSIC" });
   });
 });

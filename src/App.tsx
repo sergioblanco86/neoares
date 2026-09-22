@@ -3,13 +3,17 @@ import { AudioLines, CircleAlert, PanelLeftOpen, Plus, Sparkles } from "lucide-r
 import { AutonomousDjPanel } from "./components/AutonomousDjPanel";
 import { ConnectivityGate } from "./components/ConnectivityGate";
 import { CreateDjDialog } from "./components/CreateDjDialog";
+import { LanguageSelector } from "./components/LanguageSelector";
 import { Sidebar } from "./components/Sidebar";
 import { useConnectivity } from "./hooks/use-connectivity";
+import { readableError } from "./i18n/errors";
+import { useI18n } from "./i18n/i18n";
 import type { DjProfile } from "./shared/contracts";
 
 type LoadState = "LOADING" | "READY" | "ERROR";
 
 export function App() {
+  const { appState, setLastSelectedDjId, t } = useI18n();
   const connectivity = useConnectivity();
   const [djs, setDjs] = useState<DjProfile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -32,11 +36,15 @@ export function App() {
   async function loadDjs() {
     try {
       const stored = window.desktop ? await window.desktop.djs.list() : [];
+      const restoredId = stored.some(({ id }) => id === appState.lastSelectedDjId)
+        ? appState.lastSelectedDjId
+        : stored[0]?.id ?? null;
       setDjs(stored);
-      setSelectedId(stored[0]?.id ?? null);
+      setSelectedId(restoredId);
       setLoadState("READY");
+      if (restoredId !== appState.lastSelectedDjId) void setLastSelectedDjId(restoredId);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudieron cargar los DJs");
+      setError(readableError(cause, t, "error.loadDjs"));
       setLoadState("ERROR");
     }
   }
@@ -48,9 +56,10 @@ export function App() {
       const saved = window.desktop ? await window.desktop.djs.save(profile) : profile;
       setDjs((current) => [...current.filter(({ id }) => id !== saved.id), saved]);
       setSelectedId(saved.id);
+      await setLastSelectedDjId(saved.id);
       setDialogOpen(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo guardar el DJ");
+      setError(readableError(cause, t, "error.saveDj"));
     } finally {
       setSaving(false);
     }
@@ -67,16 +76,20 @@ export function App() {
   }
 
   async function deleteDj(profile: DjProfile): Promise<void> {
-    const confirmed = window.confirm(`¿Eliminar el DJ “${profile.name}”?\n\nEsta acción no se puede deshacer.`);
+    const confirmed = window.confirm(t("app.deleteConfirm", { name: profile.name }));
     if (!confirmed) return;
     setError(null);
     try {
       if (window.desktop) await window.desktop.djs.delete(profile.id);
       const remaining = djs.filter(({ id }) => id !== profile.id);
       setDjs(remaining);
-      if (selectedId === profile.id) setSelectedId(remaining[0]?.id ?? null);
+      if (selectedId === profile.id) {
+        const nextId = remaining[0]?.id ?? null;
+        setSelectedId(nextId);
+        await setLastSelectedDjId(nextId);
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo eliminar el DJ");
+      setError(readableError(cause, t, "error.deleteDj"));
     }
   }
 
@@ -86,7 +99,7 @@ export function App() {
 
   return (
     <div className={`app-shell${sidebarOpen ? " sidebar-open" : " sidebar-closed"}`}>
-      {sidebarOpen ? <button aria-label="Cerrar sidebar" className="sidebar-scrim" onClick={() => setSidebarOpen(false)} type="button" /> : null}
+      {sidebarOpen ? <button aria-label={t("app.closeSidebar")} className="sidebar-scrim" onClick={() => setSidebarOpen(false)} type="button" /> : null}
       <Sidebar
         djs={djs}
         loadState={loadState}
@@ -98,6 +111,9 @@ export function App() {
         onSelect={(profile) => {
           setSelectedId(profile.id);
           setSidebarOpen(false);
+          void setLastSelectedDjId(profile.id).catch((cause) => {
+            setError(readableError(cause, t, "error.rememberDj"));
+          });
         }}
         selectedId={selectedDj?.id ?? null}
       />
@@ -105,24 +121,25 @@ export function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-leading">
-            {!sidebarOpen ? <button aria-label="Mostrar DJs" className="icon-button sidebar-open-button" onClick={() => setSidebarOpen(true)} title="Mostrar DJs" type="button"><PanelLeftOpen size={18} /></button> : null}
-            <div className="topbar-context"><span className="eyebrow">NeoAres</span><strong>{selectedDj ? `DJ activo: ${selectedDj.name}` : "Crea tu primer DJ"}</strong></div>
+            {!sidebarOpen ? <button aria-label={t("app.showDjs")} className="icon-button sidebar-open-button" onClick={() => setSidebarOpen(true)} title={t("app.showDjs")} type="button"><PanelLeftOpen size={18} /></button> : null}
+            <div className="topbar-context"><span className="eyebrow">NeoAres</span><strong>{selectedDj ? t("app.activeDj", { name: selectedDj.name }) : t("app.createFirstDj")}</strong></div>
           </div>
+          <div className="topbar-actions"><LanguageSelector /></div>
         </header>
 
         <div className="page-content">
-          {error ? <div className="alert error" role="alert"><CircleAlert size={18} /><div><strong>Necesita atención</strong><span>{error}</span></div></div> : null}
+          {error ? <div className="alert error" role="alert"><CircleAlert size={18} /><div><strong>{t("app.needsAttention")}</strong><span>{error}</span></div></div> : null}
 
           <section className="hero compact-hero">
-            <div><span className="eyebrow">Cabina privada</span><h1>Elige el ambiente. El DJ hace el resto.</h1><p>Inicia una sesión y NeoAres buscará, seleccionará, preparará y mezclará la música automáticamente.</p></div>
-            <div className="hero-status"><span><Sparkles size={15} /> Curaduría dinámica</span></div>
+            <div><span className="eyebrow">{t("app.privateBooth")}</span><h1>{t("app.heroTitle")}</h1><p>{t("app.heroDescription")}</p></div>
+            <div className="hero-status"><span><Sparkles size={15} /> {t("app.dynamicCuration")}</span></div>
           </section>
 
           {selectedDj ? <AutonomousDjPanel dj={selectedDj} key={selectedDj.id} /> : (
             <section className="panel empty-dj-state">
               <AudioLines size={28} />
-              <div><span className="eyebrow">Tu cabina</span><h2>Crea tu primer DJ</h2><p>Define los géneros, artistas y la era. NeoAres se encargará de construir la sesión.</p></div>
-              <button className="primary-button" onClick={createDj} type="button"><Plus size={16} /> Crear DJ</button>
+              <div><span className="eyebrow">{t("app.yourBooth")}</span><h2>{t("app.createFirstDj")}</h2><p>{t("app.emptyDescription")}</p></div>
+              <button className="primary-button" onClick={createDj} type="button"><Plus size={16} /> {t("sidebar.createDj")}</button>
             </section>
           )}
         </div>

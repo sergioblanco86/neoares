@@ -6,6 +6,28 @@ export type DjSearchPlan = {
   excludedTerms: string[];
 };
 
+export type MusicAssessment = {
+  allowed: boolean;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  contentType: "MUSIC" | "LIVE_MUSIC" | "SPOKEN_CONTENT" | "UNKNOWN";
+  positiveReasons: string[];
+  negativeReasons: string[];
+  assessmentVersion: "music-title-v1";
+};
+
+const SPOKEN_CONTENT_TERMS = [
+  "interview", "entrevista", "documentary", "documental", "biography", "biografia",
+  "podcast", "press conference", "conferencia de prensa", "behind the scenes",
+  "making of", "reaction", "reaccion", "review", "resena", "historia de",
+  "the story of", "explained", "explicado", "analysis", "analisis", "tutorial",
+  "news", "noticias", "record update", "album update", "preguntas y respuestas", "q and a",
+];
+
+const MUSIC_EVIDENCE_TERMS = [
+  "official audio", "audio oficial", "official video", "video oficial", "official music video",
+  "music video", "lyric video", "lyrics", "letra", "studio recording", "full song",
+];
+
 const GENRE_ARTISTS: Record<string, string[]> = {
   "pop": ["Britney Spears", "Christina Aguilera", "Backstreet Boys", "NSYNC", "TLC", "Destiny's Child", "Robbie Williams", "Pink", "Avril Lavigne", "Shakira", "Jennifer Lopez", "Nelly Furtado", "Justin Timberlake", "Kelly Clarkson", "Alicia Keys", "Usher"],
   "punk": ["Ramones", "The Clash", "Sex Pistols", "Dead Kennedys", "Misfits", "Buzzcocks", "The Damned", "The Stooges", "Patti Smith", "Television", "X-Ray Spex", "The Saints"],
@@ -73,11 +95,56 @@ export function isSearchCandidateAllowed(dj: DjProfile, source: YouTubeSource, p
     && source.durationSeconds <= dj.curation.maxDurationSeconds;
   if (!validDuration) return false;
   if (plan.excludedTerms.some((term) => searchable.includes(normalizeSearchText(term)))) return false;
+  if (!assessMusicCandidate(source).allowed) return false;
 
   if (plan.artistNames.length > 0) {
     return findCandidateArtist(source, plan) !== null;
   }
   return true;
+}
+
+export function assessMusicCandidate(source: YouTubeSource): MusicAssessment {
+  const title = normalizeSearchText(source.title);
+  const creator = normalizeSearchText(source.creator);
+  const searchable = `${title} ${creator}`;
+  const negativeReasons = SPOKEN_CONTENT_TERMS
+    .filter((term) => containsPhrase(searchable, normalizeSearchText(term)))
+    .map((term) => `spoken-term:${normalizeSearchText(term)}`);
+  if (negativeReasons.length > 0) {
+    return {
+      allowed: false,
+      confidence: "LOW",
+      contentType: "SPOKEN_CONTENT",
+      positiveReasons: [],
+      negativeReasons,
+      assessmentVersion: "music-title-v1",
+    };
+  }
+
+  const positiveReasons: string[] = [];
+  for (const term of MUSIC_EVIDENCE_TERMS) {
+    if (containsPhrase(searchable, normalizeSearchText(term))) positiveReasons.push(`music-term:${normalizeSearchText(term)}`);
+  }
+  if (/\s[-–—:]\s/.test(source.title)) positiveReasons.push("artist-title-pattern");
+  if (/\btopic\b/.test(creator)) positiveReasons.push("topic-channel");
+  if (containsPhrase(title, "live") || containsPhrase(title, "en vivo")) {
+    return {
+      allowed: true,
+      confidence: positiveReasons.length > 0 ? "HIGH" : "MEDIUM",
+      contentType: "LIVE_MUSIC",
+      positiveReasons,
+      negativeReasons: [],
+      assessmentVersion: "music-title-v1",
+    };
+  }
+  return {
+    allowed: true,
+    confidence: positiveReasons.length > 0 ? "HIGH" : "MEDIUM",
+    contentType: positiveReasons.length > 0 ? "MUSIC" : "UNKNOWN",
+    positiveReasons,
+    negativeReasons: [],
+    assessmentVersion: "music-title-v1",
+  };
 }
 
 export function findCandidateArtist(source: YouTubeSource, plan: DjSearchPlan): string | null {
@@ -149,6 +216,10 @@ function isLikelySameArtist(left: string, right: string): boolean {
   if (left.length < 5 || right.length < 5) return false;
   if (left[0] !== right[0]) return false;
   return jaroWinkler(left, right) >= 0.84;
+}
+
+function containsPhrase(searchable: string, phrase: string): boolean {
+  return ` ${searchable} `.includes(` ${phrase} `);
 }
 
 function jaroWinkler(left: string, right: string): number {

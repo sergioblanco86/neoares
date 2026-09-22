@@ -95,6 +95,65 @@ export type PreparedYouTubeSource = YouTubeSource & {
 
 export type SourceRequestScope = "user" | "playback";
 
+export type SupportedLocale = "es" | "en";
+
+export type LanguagePreference = "system" | SupportedLocale;
+
+export type AppState = {
+  schemaVersion: 2;
+  lastSelectedDjId: string | null;
+  languagePreference: LanguagePreference;
+  updatedAt: string;
+};
+
+export type RestorableSessionPhase = "PLAYING" | "PAUSED" | "RECOVERING";
+
+export type SessionSnapshot = {
+  schemaVersion: 1;
+  sessionId: string;
+  djId: string;
+  djRevision: number;
+  phase: RestorableSessionPhase;
+  queue: YouTubeSource[];
+  currentIndex: number;
+  positionSeconds: number;
+  discoveryRound: number;
+  savedAt: string;
+  recoverable: boolean;
+};
+
+export type CachePolicy = {
+  maxBytes: number;
+  cleanupTargetBytes: number;
+  maxUnusedAgeDays: number;
+  partialMaxAgeMinutes: number;
+  sweepIntervalMinutes: number;
+};
+
+export type CacheStats = {
+  totalBytes: number;
+  audioFileCount: number;
+  partialFileCount: number;
+  protectedFileCount: number;
+  oldestAccessedAt: string | null;
+};
+
+export type CacheCleanupResult = {
+  bytesBefore: number;
+  bytesAfter: number;
+  removedFiles: number;
+  removedBytes: number;
+};
+
+export type LoudnessAnalysis = {
+  integratedLufs: number;
+  samplePeakDbfs: number;
+  recommendedGainDb: number;
+  targetLufs: number;
+  ceilingDbfs: number;
+  analysisVersion: "loudness-v2";
+};
+
 export type EnergyPhase = "WARMUP" | "BUILD" | "PEAK" | "SUSTAIN" | "COOLDOWN";
 
 export type CurationWeights = {
@@ -110,6 +169,10 @@ export type CurationWeights = {
 
 export type DesktopApi = {
   platform: NodeJS.Platform;
+  locale: {
+    getPreferredLanguages(): Promise<string[]>;
+    apply(locale: SupportedLocale): Promise<void>;
+  };
   connectivity: {
     check(): Promise<boolean>;
   };
@@ -120,6 +183,25 @@ export type DesktopApi = {
     list(): Promise<DjProfile[]>;
     save(profile: DjProfile): Promise<DjProfile>;
     delete(id: string): Promise<void>;
+  };
+  appState: {
+    load(): Promise<AppState>;
+    save(state: AppState): Promise<void>;
+  };
+  sessions: {
+    loadActive(): Promise<SessionSnapshot | null>;
+    saveActive(snapshot: SessionSnapshot): Promise<void>;
+    clearActive(): Promise<void>;
+  };
+  cache: {
+    getStats(): Promise<CacheStats>;
+    getPolicy(): Promise<CachePolicy>;
+    savePolicy(policy: CachePolicy): Promise<void>;
+    cleanup(): Promise<CacheCleanupResult>;
+    clearUnused(): Promise<CacheCleanupResult>;
+    protect(sourceIds: string[]): Promise<void>;
+    getLoudness(sourceId: string): Promise<LoudnessAnalysis | null>;
+    saveLoudness(sourceId: string, analysis: LoudnessAnalysis): Promise<void>;
   };
   sources: {
     search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;

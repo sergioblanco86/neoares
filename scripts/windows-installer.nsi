@@ -26,7 +26,7 @@ SetCompressorDictSize 64
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}"
 
 Name "${APP_NAME}"
-Caption "Instalar ${APP_NAME}"
+Caption "$(CaptionInstall)"
 BrandingText "${APP_NAME}"
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
@@ -37,12 +37,18 @@ ShowInstDetails show
 ShowUninstDetails show
 
 VIProductVersion "${APP_VERSION}.0"
-VIAddVersionKey /LANG=0 "ProductName" "${APP_NAME}"
-VIAddVersionKey /LANG=0 "CompanyName" "${APP_NAME}"
-VIAddVersionKey /LANG=0 "FileDescription" "Instalador de ${APP_NAME}"
-VIAddVersionKey /LANG=0 "FileVersion" "${APP_VERSION}"
-VIAddVersionKey /LANG=0 "ProductVersion" "${APP_VERSION}"
-VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright 2026 ${APP_NAME}"
+VIAddVersionKey /LANG=1033 "ProductName" "${APP_NAME}"
+VIAddVersionKey /LANG=1033 "CompanyName" "${APP_NAME}"
+VIAddVersionKey /LANG=1033 "FileDescription" "${APP_NAME} Installer"
+VIAddVersionKey /LANG=1033 "FileVersion" "${APP_VERSION}"
+VIAddVersionKey /LANG=1033 "ProductVersion" "${APP_VERSION}"
+VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright 2026 ${APP_NAME}"
+VIAddVersionKey /LANG=1034 "ProductName" "${APP_NAME}"
+VIAddVersionKey /LANG=1034 "CompanyName" "${APP_NAME}"
+VIAddVersionKey /LANG=1034 "FileDescription" "Instalador de ${APP_NAME}"
+VIAddVersionKey /LANG=1034 "FileVersion" "${APP_VERSION}"
+VIAddVersionKey /LANG=1034 "ProductVersion" "${APP_VERSION}"
+VIAddVersionKey /LANG=1034 "LegalCopyright" "Copyright 2026 ${APP_NAME}"
 
 !include "MUI2.nsh"
 
@@ -50,8 +56,8 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright 2026 ${APP_NAME}"
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Abrir ${APP_NAME}"
-!define MUI_FINISHPAGE_LINK "${APP_NAME} en GitHub"
+!define MUI_FINISHPAGE_RUN_TEXT "$(FinishRun)"
+!define MUI_FINISHPAGE_LINK "$(FinishLink)"
 !define MUI_FINISHPAGE_LINK_LOCATION "https://github.com/sergioblanco86/neoares"
 
 !insertmacro MUI_PAGE_WELCOME
@@ -63,7 +69,21 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright 2026 ${APP_NAME}"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
 
+!insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Spanish"
+
+LangString CaptionInstall ${LANG_ENGLISH} "Install ${APP_NAME}"
+LangString CaptionInstall ${LANG_SPANISH} "Instalar ${APP_NAME}"
+LangString FinishRun ${LANG_ENGLISH} "Open ${APP_NAME}"
+LangString FinishRun ${LANG_SPANISH} "Abrir ${APP_NAME}"
+LangString FinishLink ${LANG_ENGLISH} "${APP_NAME} on GitHub"
+LangString FinishLink ${LANG_SPANISH} "${APP_NAME} en GitHub"
+LangString AppIsOpenInstall ${LANG_ENGLISH} "${APP_NAME} is open. Close it and click Retry to continue."
+LangString AppIsOpenInstall ${LANG_SPANISH} "${APP_NAME} está abierto. Ciérralo y presiona Reintentar para continuar."
+LangString AppIsOpenUninstall ${LANG_ENGLISH} "${APP_NAME} is open. Close it and click Retry to continue."
+LangString AppIsOpenUninstall ${LANG_SPANISH} "${APP_NAME} está abierto. Ciérralo y presiona Reintentar para continuar."
+LangString MainSectionName ${LANG_ENGLISH} "${APP_NAME}"
+LangString MainSectionName ${LANG_SPANISH} "${APP_NAME}"
 
 Function .onInit
   SetRegView 64
@@ -74,14 +94,14 @@ Function EnsureNeoAresIsClosed
     FindWindow $0 "" "${APP_NAME}"
     StrCmp $0 0 app_closed
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
-      "${APP_NAME} está abierto. Ciérralo y presiona Reintentar para continuar." \
+      "$(AppIsOpenInstall)" \
       IDRETRY check_running IDCANCEL cancel_install
   cancel_install:
     Abort
   app_closed:
 FunctionEnd
 
-Section "${APP_NAME}" MainSection
+Section "$(MainSectionName)" MainSection
   Call EnsureNeoAresIsClosed
   SetShellVarContext current
 
@@ -89,12 +109,12 @@ Section "${APP_NAME}" MainSection
   SetOutPath "$INSTDIR"
   File /r "${PACKAGE_DIR}\*"
 
-  WriteUninstaller "$INSTDIR\Desinstalar ${APP_NAME}.exe"
+  WriteUninstaller "$INSTDIR\Uninstall ${APP_NAME}.exe"
   WriteRegStr HKCU "Software\${APP_ID}" "InstallLocation" "$INSTDIR"
 
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
   CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
-  CreateShortcut "$SMPROGRAMS\${APP_NAME}\Desinstalar ${APP_NAME}.lnk" "$INSTDIR\Desinstalar ${APP_NAME}.exe"
+  CreateShortcut "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk" "$INSTDIR\Uninstall ${APP_NAME}.exe"
   CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
 
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${APP_NAME}"
@@ -102,8 +122,8 @@ Section "${APP_NAME}" MainSection
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "${APP_NAME}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" "$\"$INSTDIR\Desinstalar ${APP_NAME}.exe$\""
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" "$\"$INSTDIR\Desinstalar ${APP_NAME}.exe$\" /S"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" "$\"$INSTDIR\Uninstall ${APP_NAME}.exe$\""
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" "$\"$INSTDIR\Uninstall ${APP_NAME}.exe$\" /S"
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" ${INSTALL_SIZE_KB}
@@ -118,7 +138,7 @@ Function un.EnsureNeoAresIsClosed
     FindWindow $0 "" "${APP_NAME}"
     StrCmp $0 0 app_closed
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
-      "${APP_NAME} está abierto. Ciérralo y presiona Reintentar para continuar." \
+      "$(AppIsOpenUninstall)" \
       IDRETRY check_running IDCANCEL cancel_uninstall
   cancel_uninstall:
     Abort

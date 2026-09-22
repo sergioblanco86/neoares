@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AudioLines, CircleAlert, MoreHorizontal, PanelLeftClose, Pencil, Plus, Trash2 } from "lucide-react";
-import neoAresIcon from "../../logos/icon.png";
+import neoAresIcon from "../../logos/newIconLogo.png";
+import { useI18n } from "../i18n/i18n";
 import type { DjProfile } from "../shared/contracts";
 
 type SidebarProps = {
@@ -16,6 +17,7 @@ type SidebarProps = {
 };
 
 export function Sidebar({ djs, loadState, selectedId, onClose, onCreate, onDelete, onEdit, onRetry, onSelect }: SidebarProps) {
+  const { t } = useI18n();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuAreaRef = useRef<HTMLElement>(null);
 
@@ -32,36 +34,36 @@ export function Sidebar({ djs, loadState, selectedId, onClose, onCreate, onDelet
       <div className="sidebar-brand-row">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true"><img alt="" src={neoAresIcon} /></div>
-          <div><strong>NeoAres</strong><span>Cabina privada</span></div>
+          <div><strong>NeoAres</strong><span>{t("sidebar.privateBooth")}</span></div>
         </div>
-        <button aria-label="Ocultar DJs" className="icon-button sidebar-close" onClick={onClose} title="Ocultar sidebar" type="button"><PanelLeftClose size={17} /></button>
+        <button aria-label={t("sidebar.hideDjs")} className="icon-button sidebar-close" onClick={onClose} title={t("sidebar.hideSidebar")} type="button"><PanelLeftClose size={17} /></button>
       </div>
 
       <div className="sidebar-section-heading">
-        <div><span className="eyebrow">Biblioteca</span><h2>Mis DJs</h2></div>
-        <button aria-label="Crear DJ" className="sidebar-add-button" onClick={onCreate} title="Nuevo DJ" type="button"><Plus size={16} /></button>
+        <div><span className="eyebrow">{t("sidebar.library")}</span><h2>{t("sidebar.myDjs")}</h2></div>
+        <button aria-label={t("sidebar.createDj")} className="sidebar-add-button" onClick={onCreate} title={t("sidebar.newDj")} type="button"><Plus size={16} /></button>
       </div>
 
       <div className="sidebar-dj-list">
         {loadState === "LOADING" ? [0, 1, 2, 3].map((item) => <div className="sidebar-dj-skeleton" key={item} />) : null}
         {loadState === "ERROR" ? (
-          <div className="sidebar-error"><CircleAlert size={18} /><span>No pudimos abrir tus DJs.</span><button onClick={onRetry} type="button">Reintentar</button></div>
+          <div className="sidebar-error"><CircleAlert size={18} /><span>{t("sidebar.loadError")}</span><button onClick={onRetry} type="button">{t("common.retry")}</button></div>
         ) : null}
         {loadState === "READY" && djs.length === 0 ? (
-          <div className="sidebar-empty"><AudioLines size={20} /><strong>Aún no tienes DJs</strong><span>Crea el primero para comenzar.</span></div>
+          <div className="sidebar-empty"><AudioLines size={20} /><strong>{t("sidebar.emptyTitle")}</strong><span>{t("sidebar.emptyDescription")}</span></div>
         ) : null}
         {loadState === "READY" ? djs.map((dj) => (
           <div className={`sidebar-dj${dj.id === selectedId ? " selected" : ""}`} key={dj.id}>
             <button className="sidebar-dj-select" onClick={() => onSelect(dj)} type="button">
               <span className="sidebar-dj-icon" aria-hidden="true"><AudioLines size={16} /></span>
-              <span className="sidebar-dj-copy"><strong>{dj.name}</strong><small>{dj.intent.genres.slice(0, 2).join(" · ") || "DJ personal"}</small></span>
+              <span className="sidebar-dj-copy"><strong>{dj.name}</strong><small>{dj.intent.genres.slice(0, 2).join(" · ") || t("sidebar.personalDj")}</small></span>
             </button>
             <div className="sidebar-dj-menu-wrap">
-              <button aria-expanded={openMenuId === dj.id} aria-haspopup="menu" aria-label={`Opciones para ${dj.name}`} className="sidebar-dj-menu-trigger" onClick={() => setOpenMenuId((current) => current === dj.id ? null : dj.id)} type="button"><MoreHorizontal size={16} /></button>
+              <button aria-expanded={openMenuId === dj.id} aria-haspopup="menu" aria-label={t("sidebar.optionsFor", { name: dj.name })} className="sidebar-dj-menu-trigger" onClick={() => setOpenMenuId((current) => current === dj.id ? null : dj.id)} type="button"><MoreHorizontal size={16} /></button>
               {openMenuId === dj.id ? (
                 <div className="sidebar-dj-menu" role="menu">
-                  <button onClick={() => { setOpenMenuId(null); onEdit(dj); }} role="menuitem" type="button"><Pencil size={14} /> Editar DJ</button>
-                  <button className="danger" onClick={() => { setOpenMenuId(null); onDelete(dj); }} role="menuitem" type="button"><Trash2 size={14} /> Eliminar DJ</button>
+                  <button onClick={() => { setOpenMenuId(null); onEdit(dj); }} role="menuitem" type="button"><Pencil size={14} /> {t("sidebar.editDj")}</button>
+                  <button className="danger" onClick={() => { setOpenMenuId(null); onDelete(dj); }} role="menuitem" type="button"><Trash2 size={14} /> {t("sidebar.deleteDj")}</button>
                 </div>
               ) : null}
             </div>
@@ -69,7 +71,7 @@ export function Sidebar({ djs, loadState, selectedId, onClose, onCreate, onDelet
         )) : null}
       </div>
 
-      <button className="sidebar-create-wide" onClick={onCreate} type="button"><Plus size={16} /> Nuevo DJ</button>
+      <button className="sidebar-create-wide" onClick={onCreate} type="button"><Plus size={16} /> {t("sidebar.newDj")}</button>
     </aside>
   );
 }

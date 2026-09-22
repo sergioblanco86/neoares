@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { CircleAlert, CircleCheck, Disc3, LoaderCircle, Pause, Play, Radio, WandSparkles } from "lucide-react";
 import { DualDeckMixer, type DeckSlot } from "../audio/dual-deck-mixer";
+import { displayCreator, displayTitle } from "../i18n/content";
+import { readableError } from "../i18n/errors";
+import { useI18n } from "../i18n/i18n";
 import type { PreparedYouTubeSource } from "../shared/contracts";
 
 type DeckPhase = "EMPTY" | "PREPARING" | "READY" | "PLAYING" | "ERROR";
@@ -20,6 +23,7 @@ const DEMO_URLS = {
 const wave = [28, 52, 76, 43, 91, 64, 35, 82, 57, 39, 71, 48, 88, 61, 31, 69, 53, 79, 42, 66, 34, 85, 56, 46];
 
 export function YouTubeMixerPanel() {
+  const { t } = useI18n();
   const [mixer] = useState(() => new DualDeckMixer());
   const [decks, setDecks] = useState<Record<DeckSlot, DeckState>>({
     A: { ...EMPTY_DECK, url: DEMO_URLS.A },
@@ -38,7 +42,7 @@ export function YouTubeMixerPanel() {
     const url = decks[slot].url.trim();
     if (!url) return;
     if (!window.desktop) {
-      updateDeck(slot, { phase: "ERROR", error: "Abre esta función desde la aplicación de escritorio." });
+      updateDeck(slot, { phase: "ERROR", error: t("mixer.desktopOnly") });
       return;
     }
 
@@ -52,7 +56,7 @@ export function YouTubeMixerPanel() {
       await mixer.load(slot, bytes);
       updateDeck(slot, { phase: "READY", source, error: null });
     } catch (cause) {
-      updateDeck(slot, { phase: "ERROR", source: null, error: readableError(cause) });
+      updateDeck(slot, { phase: "ERROR", source: null, error: readableError(cause, t, "mixer.prepareFailed") });
     } finally {
       if (leaseId) await window.desktop.sources.release(leaseId);
     }
@@ -68,7 +72,7 @@ export function YouTubeMixerPanel() {
       setActiveDeck(slot);
       updateDeck(slot, { phase: "PLAYING", error: null });
     } catch (cause) {
-      updateDeck(slot, { phase: "ERROR", error: readableError(cause) });
+      updateDeck(slot, { phase: "ERROR", error: readableError(cause, t, "mixer.prepareFailed") });
     }
   }
 
@@ -82,7 +86,7 @@ export function YouTubeMixerPanel() {
       window.setTimeout(() => setMixing(false), 8_000);
     } catch (cause) {
       setMixing(false);
-      updateDeck("B", { phase: "ERROR", error: readableError(cause) });
+      updateDeck("B", { phase: "ERROR", error: readableError(cause, t, "mixer.prepareFailed") });
     }
   }
 
@@ -112,18 +116,18 @@ export function YouTubeMixerPanel() {
     <section className="panel real-mixer" aria-labelledby="real-mixer-title">
       <div className="real-mixer-heading">
         <div>
-          <span className="eyebrow">Cabina funcional · audio local temporal</span>
-          <h2 id="real-mixer-title">Mezcla dos canciones del catálogo</h2>
-          <p>Pega dos enlaces. La app prepara audio compatible y ejecuta un crossfade equal-power de 8 segundos.</p>
+          <span className="eyebrow">{t("mixer.eyebrow")}</span>
+          <h2 id="real-mixer-title">{t("mixer.title")}</h2>
+          <p>{t("mixer.description")}</p>
         </div>
         <div className="mixer-heading-actions">
           <span className={`engine-state ${bothReady ? "passed" : "idle"}`}>
             {bothReady ? <CircleCheck size={14} /> : <Radio size={14} />}
-            {bothReady ? "Decks listos" : "Esperando fuentes"}
+            {bothReady ? t("mixer.decksReady") : t("mixer.waiting")}
           </span>
-          <button className="secondary-button" onClick={loadDemo} type="button">Cargar ejemplo</button>
+          <button className="secondary-button" onClick={loadDemo} type="button">{t("mixer.loadExample")}</button>
           <button className="primary-button" disabled={!canPrepareBoth} onClick={() => void prepareBoth()} type="button">
-            <WandSparkles size={16} /> Preparar ambos
+            <WandSparkles size={16} /> {t("mixer.prepareBoth")}
           </button>
         </div>
       </div>
@@ -135,24 +139,25 @@ export function YouTubeMixerPanel() {
       </div>
 
       <div className="mixer-console">
-        <div className="mix-path" aria-label="Ruta de mezcla">
+        <div className="mix-path" aria-label={t("mixer.mixPath")}>
           <span className={activeDeck === "A" ? "active" : ""}>A</span>
           <i><b style={{ width: mixing ? "100%" : activeDeck === "B" ? "100%" : "0%" }} /></i>
           <span className={activeDeck === "B" ? "active" : ""}>B</span>
         </div>
         <div className="console-actions">
-          <button className="secondary-button" disabled={!decks.A.source} onClick={() => void play("A")} type="button"><Play size={15} fill="currentColor" /> Reproducir A</button>
-          <button className="primary-button" disabled={!bothReady || mixing} onClick={() => void mixAToB()} type="button"><Disc3 size={16} /> {mixing ? "Mezclando…" : "Mezclar A → B"}</button>
-          <button className="ghost-button" disabled={!activeDeck} onClick={stop} type="button"><Pause size={15} /> Detener</button>
+          <button className="secondary-button" disabled={!decks.A.source} onClick={() => void play("A")} type="button"><Play size={15} fill="currentColor" /> {t("mixer.playA")}</button>
+          <button className="primary-button" disabled={!bothReady || mixing} onClick={() => void mixAToB()} type="button"><Disc3 size={16} /> {mixing ? t("mixer.mixing") : t("mixer.mixAToB")}</button>
+          <button className="ghost-button" disabled={!activeDeck} onClick={stop} type="button"><Pause size={15} /> {t("mixer.stop")}</button>
         </div>
       </div>
 
-      <div className="mixer-note"><CircleAlert size={15} /><span>Este MVP hace una transición audible real. La detección de BPM y el beatmatching automático son el siguiente incremento.</span></div>
+      <div className="mixer-note"><CircleAlert size={15} /><span>{t("mixer.note")}</span></div>
     </section>
   );
 }
 
 function Deck({ active, deck, onPrepare, onUrlChange, slot }: { active: boolean; deck: DeckState; onPrepare(): void; onUrlChange(url: string): void; slot: DeckSlot }) {
+  const { t } = useI18n();
   const isPreparing = deck.phase === "PREPARING";
   return (
     <article className={`real-deck ${active ? "active" : ""}`}>
@@ -161,10 +166,10 @@ function Deck({ active, deck, onPrepare, onUrlChange, slot }: { active: boolean;
         <Status phase={deck.phase} />
       </div>
       <label className="deck-source-field">
-        <span>URL del video</span>
+        <span>{t("mixer.videoUrl")}</span>
         <div>
-          <input aria-label={`URL de la fuente para deck ${slot}`} disabled={isPreparing} onChange={(event) => onUrlChange(event.target.value)} placeholder="Pega un enlace de la canción…" value={deck.url} />
-          <button className="secondary-button" disabled={!deck.url.trim() || isPreparing} onClick={onPrepare} type="button">{isPreparing ? <LoaderCircle className="spin" size={15} /> : null}{isPreparing ? "Preparando…" : `Preparar ${slot}`}</button>
+          <input aria-label={t("mixer.sourceUrl", { slot })} disabled={isPreparing} onChange={(event) => onUrlChange(event.target.value)} placeholder={t("mixer.pasteUrl")} value={deck.url} />
+          <button className="secondary-button" disabled={!deck.url.trim() || isPreparing} onClick={onPrepare} type="button">{isPreparing ? <LoaderCircle className="spin" size={15} /> : null}{isPreparing ? t("mixer.preparing") : t("mixer.prepareSlot", { slot })}</button>
         </div>
       </label>
 
@@ -175,33 +180,29 @@ function Deck({ active, deck, onPrepare, onUrlChange, slot }: { active: boolean;
 
       {deck.source ? (
         <div className="track-summary">
-          <div><strong>{deck.source.title}</strong><span>{deck.source.creator}</span></div>
+          <div><strong>{displayTitle(deck.source.title, t)}</strong><span>{displayCreator(deck.source.creator, t)}</span></div>
           <time>{formatDuration(deck.source.durationSeconds)}</time>
         </div>
       ) : deck.error ? (
         <div className="deck-error" role="alert"><CircleAlert size={14} /><span>{deck.error}</span></div>
       ) : (
-        <div className="deck-empty">El audio aparecerá aquí cuando termine la preparación.</div>
+        <div className="deck-empty">{t("mixer.audioEmpty")}</div>
       )}
     </article>
   );
 }
 
 function Status({ phase }: { phase: DeckPhase }) {
-  if (phase === "PREPARING") return <span className="deck-status working"><LoaderCircle className="spin" size={12} /> descargando</span>;
-  if (phase === "READY") return <span className="deck-status ready"><CircleCheck size={12} /> listo</span>;
-  if (phase === "PLAYING") return <span className="deck-status playing"><Radio size={12} /> al aire</span>;
-  if (phase === "ERROR") return <span className="deck-status error"><CircleAlert size={12} /> error</span>;
-  return <span className="deck-status">vacío</span>;
+  const { t } = useI18n();
+  if (phase === "PREPARING") return <span className="deck-status working"><LoaderCircle className="spin" size={12} /> {t("mixer.downloading")}</span>;
+  if (phase === "READY") return <span className="deck-status ready"><CircleCheck size={12} /> {t("mixer.ready")}</span>;
+  if (phase === "PLAYING") return <span className="deck-status playing"><Radio size={12} /> {t("mixer.onAir")}</span>;
+  if (phase === "ERROR") return <span className="deck-status error"><CircleAlert size={12} /> {t("common.error").toLowerCase()}</span>;
+  return <span className="deck-status">{t("mixer.empty")}</span>;
 }
 
 function formatDuration(seconds: number): string {
   if (!seconds) return "—";
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
-}
-
-function readableError(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : "No se pudo preparar esta fuente.";
-  return message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 }

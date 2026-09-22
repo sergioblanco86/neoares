@@ -14,6 +14,7 @@ La ruta física se decidirá según la plataforma. La disposición interna será
 
 ```text
 data/
+├── app-state.json
 ├── manifest.json
 ├── settings.json
 ├── djs/
@@ -31,13 +32,13 @@ data/
 │           └── <transition-id>.json
 ├── preferences/
 │   └── music-preferences.json
-├── cache/
-│   ├── sources/
-│   ├── waveforms/
-│   └── tmp/
 ├── logs/
 │   └── app-YYYY-MM-DD.ndjson
 └── backups/
+
+MediaCache/
+├── audio/
+└── cache-index.json
 ```
 
 ## 3. Clasificación
@@ -45,6 +46,7 @@ data/
 ### Permanente
 
 - DJs.
+- Preferencia de idioma (`system`, `es` o `en`) y último DJ seleccionado.
 - Settings sin secretos.
 - Metadatos normalizados de pistas.
 - Análisis reutilizables.
@@ -67,6 +69,10 @@ data/
 
 La limpieza de temporales nunca elimina entidades permanentes.
 
+En macOS ambos directorios viven bajo `Application Support/NeoAres`. En Windows
+viven bajo el directorio de datos de aplicación de NeoAres. `MediaCache` se
+mantiene separado de `data` para poder vaciarlo sin tocar DJs ni sesiones.
+
 ## 4. Identificadores
 
 - Entidades internas: UUID v7 preferentemente; UUID v4 aceptable.
@@ -86,6 +92,9 @@ Cada documento raíz incluye:
   "updatedAt": "2026-09-18T20:00:00Z"
 }
 ```
+
+`app-state.json` usa actualmente `schemaVersion: 2`; su migración desde la
+versión 1 conserva el último DJ y añade `languagePreference: "system"`.
 
 Reglas:
 

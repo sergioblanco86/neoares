@@ -1,6 +1,16 @@
 # Contratos de implementación de NeoAres
 
-Estado: aprobado para implementación.
+Estado: implementación base completada el 2026-09-22; pendiente de prueba
+prolongada y controles visuales de almacenamiento.
+
+Implementado:
+
+- persistencia atómica del último DJ y snapshot activo;
+- recuperación manual sin autoplay, conservando cola, índice y posición;
+- coordinador de cola con refill `single-flight` y objetivo de seis pistas;
+- clasificación inicial de contenido hablado;
+- análisis de sonoridad integrado, ganancia por deck y limitador de seguridad;
+- índice de caché, migración, protección de audio en uso y limpieza periódica.
 
 Este documento reúne los requisitos acordados para persistencia de sesión,
 continuidad, validación musical, profundidad de cola, normalización de sonoridad
@@ -32,8 +42,9 @@ La aplicación guarda `data/app-state.json` con este contrato conceptual:
 
 ```ts
 type AppState = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   lastSelectedDjId: string | null;
+  languagePreference: "system" | "es" | "en";
   updatedAt: string;
 };
 ```
@@ -43,8 +54,18 @@ Al iniciar NeoAres:
 1. Se intenta seleccionar `lastSelectedDjId`.
 2. Si el DJ no existe, se selecciona el primer DJ disponible.
 3. Si no existen DJs, se presenta la biblioteca vacía sin crear DJs de prueba.
+4. Un documento versión 1 se migra automáticamente a versión 2 conservando
+   `lastSelectedDjId` y asignando `languagePreference: "system"`.
 
-### 2.2 Snapshot recuperable
+### 2.2 Idioma de la aplicación
+
+El contrato completo está en
+[`INTERNATIONALIZATION.md`](INTERNATIONALIZATION.md). NeoAres inicia en modo
+`system`, soporta español e inglés, usa inglés como fallback y aplica cualquier
+cambio manual inmediatamente sin reiniciar. La preferencia no altera nombres,
+géneros, artistas, canciones ni consultas del usuario.
+
+### 2.3 Snapshot recuperable
 
 La sesión activa se guarda en `data/sessions/active.json`:
 
