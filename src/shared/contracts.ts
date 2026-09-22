@@ -93,6 +93,8 @@ export type PreparedYouTubeSource = YouTubeSource & {
   format: "m4a" | "webm" | "unknown";
 };
 
+export type SourceRequestScope = "user" | "playback";
+
 export type EnergyPhase = "WARMUP" | "BUILD" | "PEAK" | "SUSTAIN" | "COOLDOWN";
 
 export type CurationWeights = {
@@ -111,18 +113,22 @@ export type DesktopApi = {
   connectivity: {
     check(): Promise<boolean>;
   };
+  runtime: {
+    setAudioActive(active: boolean): Promise<void>;
+  };
   djs: {
     list(): Promise<DjProfile[]>;
     save(profile: DjProfile): Promise<DjProfile>;
     delete(id: string): Promise<void>;
   };
   sources: {
-    search(query: string, limit: number): Promise<YouTubeSource[]>;
-    searchMany(queries: string[], limitPerQuery: number): Promise<YouTubeSource[][]>;
-    inspect(url: string): Promise<YouTubeSource>;
-    prepare(source: YouTubeSource): Promise<PreparedYouTubeSource>;
+    search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;
+    searchMany(queries: string[], limitPerQuery: number, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
+    inspect(url: string, scope?: SourceRequestScope): Promise<YouTubeSource>;
+    prepare(source: YouTubeSource, scope?: SourceRequestScope): Promise<PreparedYouTubeSource>;
     read(leaseId: string): Promise<Uint8Array>;
     release(leaseId: string): Promise<void>;
+    cancelPlayback(): Promise<number>;
   };
 };
 

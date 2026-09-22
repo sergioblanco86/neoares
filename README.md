@@ -22,7 +22,10 @@ Para reconstruir el paquete después de cambiar el código:
 pnpm package:mac
 ```
 
-El paquete distribuible queda en `release/NeoAres-macOS-arm64.zip`.
+El empaquetado genera dos variantes:
+
+- `release/NeoAres-macOS-arm64.zip`: Apple Silicon con macOS 13 Ventura o posterior.
+- `release/NeoAres-macOS-Universal.zip`: Intel y Apple Silicon con macOS 12 Monterey o posterior.
 
 Para construir los paquetes de macOS y Windows en una sola ejecución:
 
@@ -32,6 +35,26 @@ pnpm package:all
 
 Los ZIP de distribución se publican como archivos descargables de cada versión
 en GitHub Releases. No forman parte del historial del código fuente.
+
+### Windows
+
+El empaquetado de Windows genera dos opciones:
+
+- `release/NeoAres-Windows-Setup-x64.exe`: instalador por usuario con accesos
+  directos y desinstalador. No requiere permisos de administrador.
+- `release/NeoAres-Windows-Portable-x64.zip`: versión portable que se puede
+  descomprimir y ejecutar sin instalación.
+
+Para construir ambas:
+
+```bash
+pnpm package:win
+```
+
+El instalador usa NSIS, una herramienta gratuita y de código abierto. En macOS
+se instala una sola vez con `brew install nsis`. Los ejecutables no están
+firmados digitalmente, por lo que Windows SmartScreen puede mostrar una
+advertencia aunque el instalador sea válido.
 
 ### Desarrollo
 

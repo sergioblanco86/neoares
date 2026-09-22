@@ -20,6 +20,10 @@ lenguaje de implementación.
 - [Contratos de puertos](PORTS.md)
 - [Catálogo de eventos](EVENTS.md)
 - [Máquinas de estado](STATE_MACHINES.md)
+- [Continuidad de sesión](SESSION_CONTINUITY.md)
+
+El conjunto de requisitos aprobado para la siguiente implementación está en
+[`docs/IMPLEMENTATION_CONTRACTS.md`](../docs/IMPLEMENTATION_CONTRACTS.md).
 
 ## Reglas globales
 

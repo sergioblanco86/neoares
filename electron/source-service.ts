@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { parseYouTubeUrl } from "../src/adapters/youtube/parse-youtube-url";
-import type { PreparedYouTubeSource, YouTubeSource } from "../src/shared/contracts";
+import type { PreparedYouTubeSource, SourceRequestScope, YouTubeSource } from "../src/shared/contracts";
 
 type YtDlpMetadata = {
   id?: unknown;
@@ -22,6 +22,10 @@ type Lease = {
   source: PreparedYouTubeSource;
 };
 
+type SpawnedProcess = ReturnType<typeof spawn>;
+type SourceOperation = "search" | "inspect" | "download";
+type ActiveProcess = { operation: SourceOperation; scope: SourceRequestScope };
+
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const SEARCH_BASE_TIMEOUT_MS = 9_000;
 const SEARCH_PER_QUERY_TIMEOUT_MS = 3_000;
@@ -31,17 +35,18 @@ const DOWNLOAD_TIMEOUT_MS = 20_000;
 
 export class SourceService {
   readonly #leases = new Map<string, Lease>();
+  readonly #activeProcesses = new Map<SpawnedProcess, ActiveProcess>();
 
   constructor(
     private readonly cacheRoot: string,
     private readonly executableOverride?: string,
   ) {}
 
-  async search(queryInput: string, requestedLimit: number): Promise<YouTubeSource[]> {
-    return (await this.searchMany([queryInput], requestedLimit))[0] ?? [];
+  async search(queryInput: string, requestedLimit: number, scope: SourceRequestScope = "user"): Promise<YouTubeSource[]> {
+    return (await this.searchMany([queryInput], requestedLimit, scope))[0] ?? [];
   }
 
-  async searchMany(queryInputs: string[], requestedLimit: number): Promise<YouTubeSource[][]> {
+  async searchMany(queryInputs: string[], requestedLimit: number, scope: SourceRequestScope = "user"): Promise<YouTubeSource[][]> {
     const queries = [...new Set(queryInputs.map((query) => query.trim().slice(0, 160)).filter(Boolean))].slice(0, 8);
     const limit = Math.min(10, Math.max(1, Math.trunc(requestedLimit)));
     if (queries.length === 0) throw new Error("La búsqueda del DJ está vacía.");
@@ -60,7 +65,7 @@ export class SourceService {
       "--js-runtimes",
       "node",
       ...queries.map((query) => `ytsearch${limit}:${query}`),
-    ], "search", Math.min(SEARCH_MAX_TIMEOUT_MS, SEARCH_BASE_TIMEOUT_MS + queries.length * SEARCH_PER_QUERY_TIMEOUT_MS));
+    ], "search", Math.min(SEARCH_MAX_TIMEOUT_MS, SEARCH_BASE_TIMEOUT_MS + queries.length * SEARCH_PER_QUERY_TIMEOUT_MS), this.#activeProcesses, scope);
 
     const grouped = new Map(queries.map((query) => [query, [] as YouTubeSource[]]));
     for (const line of output.split(/\r?\n/).filter(Boolean)) {
@@ -80,7 +85,7 @@ export class SourceService {
     return queries.map((query) => grouped.get(query) ?? []);
   }
 
-  async inspect(input: string): Promise<YouTubeSource> {
+  async inspect(input: string, scope: SourceRequestScope = "user"): Promise<YouTubeSource> {
     const reference = parseYouTubeUrl(input);
     if (!reference || reference.kind !== "VIDEO") {
       throw new Error("Pega un enlace válido a un video del catálogo.");
@@ -93,7 +98,7 @@ export class SourceService {
       "--no-playlist",
       "--no-warnings",
       reference.canonicalUrl,
-    ], "inspect", INSPECT_TIMEOUT_MS);
+    ], "inspect", INSPECT_TIMEOUT_MS, this.#activeProcesses, scope);
 
     let metadata: YtDlpMetadata;
     try {
@@ -105,7 +110,7 @@ export class SourceService {
     return normalizeMetadata(metadata, reference.id, reference.canonicalUrl);
   }
 
-  async prepare(input: YouTubeSource): Promise<PreparedYouTubeSource> {
+  async prepare(input: YouTubeSource, scope: SourceRequestScope = "user"): Promise<PreparedYouTubeSource> {
     const metadata = normalizePreparationSource(input);
     const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
     await mkdir(this.cacheRoot, { recursive: true });
@@ -131,7 +136,7 @@ export class SourceService {
         "--print",
         "after_move:filepath",
         metadata.canonicalUrl,
-      ], "download", DOWNLOAD_TIMEOUT_MS);
+      ], "download", DOWNLOAD_TIMEOUT_MS, this.#activeProcesses, scope);
 
       const reportedPath = output.trim().split(/\r?\n/).filter(Boolean).at(-1);
       if (!reportedPath) throw new Error("La preparación terminó sin producir un archivo de audio.");
@@ -163,6 +168,26 @@ export class SourceService {
 
   release(leaseId: string): void {
     this.#leases.delete(leaseId);
+  }
+
+  cancelPlayback(): number {
+    return this.#cancelMatching((active) => active.scope === "playback");
+  }
+
+  cancelAll(): number {
+    return this.#cancelMatching(() => true);
+  }
+
+  #cancelMatching(predicate: (active: ActiveProcess) => boolean): number {
+    const matching = [...this.#activeProcesses].filter(([, active]) => predicate(active));
+    for (const [child] of matching) terminateProcessTree(child.pid);
+    if (matching.length > 0) {
+      console.info("[sources] external-call:cancel", {
+        activeCount: matching.length,
+        operations: [...new Set(matching.map(([, active]) => active.operation))],
+      });
+    }
+    return matching.length;
   }
 }
 
@@ -243,8 +268,10 @@ function extensionFormat(filePath: string): PreparedYouTubeSource["format"] {
 function run(
   executable: string,
   args: string[],
-  operation: "search" | "inspect" | "download",
+  operation: SourceOperation,
   timeoutMs: number,
+  activeProcesses?: Map<SpawnedProcess, ActiveProcess>,
+  scope: SourceRequestScope = "user",
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
@@ -255,6 +282,7 @@ function run(
       shell: false,
       windowsHide: true,
     });
+    activeProcesses?.set(child, { operation, scope });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let totalBytes = 0;
@@ -263,6 +291,7 @@ function run(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      activeProcesses?.delete(child);
       console.info("[sources] external-call:complete", { durationMs: Date.now() - startedAt, operation });
       resolve(output);
     };
@@ -271,6 +300,7 @@ function run(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      activeProcesses?.delete(child);
       console.error("[sources] external-call:error", { durationMs: Date.now() - startedAt, operation, ...extra });
       reject(error);
     };

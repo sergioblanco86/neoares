@@ -5,7 +5,7 @@ import { IPC_CHANNELS } from "./channels";
 import { hasInternetConnection } from "./connectivity";
 import { DjRepository } from "./dj-repository";
 import { SourceService } from "./source-service";
-import type { DjProfile, YouTubeSource } from "../src/shared/contracts";
+import type { DjProfile, SourceRequestScope, YouTubeSource } from "../src/shared/contracts";
 
 process.title = "NeoAres";
 app.name = "NeoAres";
@@ -31,7 +31,7 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
     },
   });
 
@@ -81,12 +81,18 @@ if (!hasSingleInstanceLock) {
   ipcMain.handle(IPC_CHANNELS.saveDj, (_event, profile: DjProfile) => repository.save(profile));
   ipcMain.handle(IPC_CHANNELS.deleteDj, (_event, id: string) => repository.delete(id));
   ipcMain.handle(IPC_CHANNELS.checkConnectivity, () => hasInternetConnection());
-  ipcMain.handle(IPC_CHANNELS.searchSources, (_event, query: string, limit: number) => sources.search(query, limit));
-  ipcMain.handle(IPC_CHANNELS.searchManySources, (_event, queries: string[], limitPerQuery: number) => sources.searchMany(queries, limitPerQuery));
-  ipcMain.handle(IPC_CHANNELS.inspectSource, (_event, url: string) => sources.inspect(url));
-  ipcMain.handle(IPC_CHANNELS.prepareSource, (_event, source: YouTubeSource) => sources.prepare(source));
+  ipcMain.handle(IPC_CHANNELS.setAudioActive, (event, active: boolean) => {
+    event.sender.setBackgroundThrottling(!(active === true));
+  });
+  ipcMain.handle(IPC_CHANNELS.searchSources, (_event, query: string, limit: number, scope?: SourceRequestScope) => sources.search(query, limit, scope));
+  ipcMain.handle(IPC_CHANNELS.searchManySources, (_event, queries: string[], limitPerQuery: number, scope?: SourceRequestScope) => sources.searchMany(queries, limitPerQuery, scope));
+  ipcMain.handle(IPC_CHANNELS.inspectSource, (_event, url: string, scope?: SourceRequestScope) => sources.inspect(url, scope));
+  ipcMain.handle(IPC_CHANNELS.prepareSource, (_event, source: YouTubeSource, scope?: SourceRequestScope) => sources.prepare(source, scope));
   ipcMain.handle(IPC_CHANNELS.readSource, (_event, leaseId: string) => sources.read(leaseId));
   ipcMain.handle(IPC_CHANNELS.releaseSource, (_event, leaseId: string) => sources.release(leaseId));
+  ipcMain.handle(IPC_CHANNELS.cancelPlaybackSources, () => sources.cancelPlayback());
+
+  app.on("before-quit", () => sources.cancelAll());
 
   createWindow();
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { YouTubeSource } from "../shared/contracts";
-import { insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming } from "./queue-operations";
+import { getUpcoming, insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming } from "./queue-operations";
 
 const tracks = ["a", "b", "c", "d", "e"].map((id) => ({
   id,
@@ -38,5 +38,10 @@ describe("queue operations", () => {
 
   it("keeps playback history and the current track when replacing upcoming tracks", () => {
     expect(setUpcoming(tracks, 1, [tracks[4]]).map(({ id }) => id)).toEqual(["a", "b", "e"]);
+  });
+
+  it("never reports played tracks or the current track as upcoming", () => {
+    expect(getUpcoming(tracks, 2).map(({ id }) => id)).toEqual(["d", "e"]);
+    expect(getUpcoming(tracks, tracks.length - 1)).toEqual([]);
   });
 });

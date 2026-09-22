@@ -163,8 +163,14 @@ Nunca se exportan secretos en backups, diagnósticos o ejemplos.
 - Resúmenes de sesión: indefinidos.
 - Logs de aplicación: 14 días.
 - Respuestas crudas de IA/búsqueda: 24 horas como máximo.
-- Audio temporal: borrar al liberar la pista o cerrar la sesión; barrido de
-  huérfanos al iniciar.
+- Audio temporal: caché LRU regenerable con máximo inicial de 1 GiB, objetivo de
+  limpieza de 750 MiB y edad máxima sin uso de 30 días. El barrido ocurre al
+  iniciar, cada 30 minutos, al volver de suspensión y al superar el presupuesto.
+- Archivos parciales: eliminar después de 60 minutos.
+
+La política completa, los archivos protegidos y la migración desde las rutas
+anteriores se definen en
+[`IMPLEMENTATION_CONTRACTS.md`](IMPLEMENTATION_CONTRACTS.md#7-ciclo-de-vida-de-caché).
 
 ## 11. Exportación y eliminación
 

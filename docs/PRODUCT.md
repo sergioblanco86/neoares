@@ -165,6 +165,18 @@ Los identificadores `FR-*` serán usados por pruebas y decisiones futuras.
 - **FR-019:** el motor nunca modifica silenciosamente las reglas persistentes de
   un DJ a partir de una orden temporal.
 - **FR-020:** el cierre normal elimina los artefactos temporales no requeridos.
+- **FR-021:** al reabrir, se selecciona el último DJ y se ofrece recuperar la
+  sesión activa con su cola, orden, pista y posición aproximada.
+- **FR-022:** `PAUSE` suspende exclusivamente el audio y no cancela preparación.
+- **FR-023:** después de iniciar un DJ, un fallo recuperable de una pista no
+  termina la sesión; activa reemplazo y recuperación.
+- **FR-024:** la cola mantiene al menos cuatro pistas futuras y apunta a seis.
+- **FR-025:** entrevistas, documentales y contenido hablado se rechazan antes de
+  reproducirse mediante evidencia auditable.
+- **FR-026:** la preparación calcula ganancia de normalización por pista sin
+  modificar tono, BPM, archivo fuente ni volumen elegido por el usuario.
+- **FR-027:** la caché de audio se limpia periódicamente aunque NeoAres permanezca
+  abierto y nunca elimina archivos protegidos por reproducción o recuperación.
 
 ## 9. Requisitos de calidad
 

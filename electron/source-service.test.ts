@@ -81,3 +81,52 @@ exit 1
     expect(groups.map((group) => group.map(({ id }) => id))).toEqual([["track-a"], []]);
   });
 });
+
+describe("SourceService cancellation", () => {
+  it("cancels an in-flight preparation process", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "neoares-cancel-"));
+    temporaryDirectories.push(directory);
+    const executable = path.join(directory, "slow-media-tool");
+    await writeFile(executable, `#!/bin/sh
+sleep 10
+`);
+    await chmod(executable, 0o700);
+    const service = new SourceService(directory, executable);
+    const preparation = service.prepare({
+      id: "oWBf9hfW_4Y",
+      canonicalUrl: "https://www.youtube.com/watch?v=oWBf9hfW_4Y",
+      title: "La Rebelión",
+      creator: "Joe Arroyo",
+      durationSeconds: 285,
+      thumbnailUrl: null,
+    }, "playback");
+
+    await waitForSpawn();
+
+    expect(service.cancelPlayback()).toBe(1);
+    await expect(preparation).rejects.toThrow();
+    expect(service.cancelPlayback()).toBe(0);
+  });
+
+  it("keeps user searches running when preparation is cancelled", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "neoares-cancel-"));
+    temporaryDirectories.push(directory);
+    const executable = path.join(directory, "slow-search-tool");
+    await writeFile(executable, `#!/bin/sh
+sleep 10
+`);
+    await chmod(executable, 0o700);
+    const service = new SourceService(directory, executable);
+    const search = service.searchMany(["salsa"], 1);
+
+    await waitForSpawn();
+
+    expect(service.cancelPlayback()).toBe(0);
+    expect(service.cancelAll()).toBe(1);
+    await expect(search).rejects.toThrow();
+  });
+});
+
+function waitForSpawn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 50));
+}

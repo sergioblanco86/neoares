@@ -59,6 +59,8 @@ export class DualDeckMixer {
   #context: AudioContext | null = null;
   #master: GainNode | null = null;
   #volume = 0.9;
+  readonly #loadVersions: Record<DeckSlot, number> = { A: 0, B: 0 };
+  readonly #transitionTimers = new Set<number>();
   readonly #decks: Record<DeckSlot, DeckRuntime> = {
     A: { buffer: null, source: null, gain: null, analysis: null, startedAt: null, startedOffset: 0, waveform: [] },
     B: { buffer: null, source: null, gain: null, analysis: null, startedAt: null, startedOffset: 0, waveform: [] },
@@ -69,10 +71,15 @@ export class DualDeckMixer {
   }
 
   async load(slot: DeckSlot, bytes: Uint8Array): Promise<BeatAnalysis> {
+    this.unload(slot);
+    const loadVersion = this.#loadVersions[slot];
     const context = this.#ensureContext();
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     const buffer = await context.decodeAudioData(copy.buffer);
+    if (loadVersion !== this.#loadVersions[slot]) {
+      throw new Error(`La carga del deck ${slot} fue reemplazada por una solicitud más reciente.`);
+    }
     const analysis = analyzeBeatGrid(buffer);
     this.#decks[slot].buffer = buffer;
     this.#decks[slot].analysis = analysis;
@@ -165,7 +172,11 @@ export class DualDeckMixer {
       activeFrom.gain.gain.setValueCurveAtTime(fadeOut, start, effectiveDuration);
     }
     activeTo.gain!.gain.setValueCurveAtTime(fadeIn, start, effectiveDuration);
-    window.setTimeout(() => this.#stop(from), effectiveDuration * 1_000 + 50);
+    const timer = window.setTimeout(() => {
+      this.#transitionTimers.delete(timer);
+      this.#stop(from);
+    }, effectiveDuration * 1_000 + 50);
+    this.#transitionTimers.add(timer);
     return {
       mode: plan.mode,
       fromBpm: fromAnalysis.bpm,
@@ -181,8 +192,24 @@ export class DualDeckMixer {
     for (const slot of ["A", "B"] as const) this.#stop(slot);
   }
 
+  unload(slot: DeckSlot): void {
+    this.#loadVersions[slot] += 1;
+    this.#stop(slot);
+    const deck = this.#decks[slot];
+    deck.buffer = null;
+    deck.analysis = null;
+    deck.waveform = [];
+    deck.startedOffset = 0;
+  }
+
+  reset(): void {
+    for (const timer of this.#transitionTimers) window.clearTimeout(timer);
+    this.#transitionTimers.clear();
+    for (const slot of ["A", "B"] as const) this.unload(slot);
+  }
+
   async dispose(): Promise<void> {
-    this.stopAll();
+    this.reset();
     await this.#context?.close();
     this.#context = null;
     this.#master = null;

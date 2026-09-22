@@ -3,16 +3,20 @@ import { CircleAlert, CircleCheck, LoaderCircle, Pause, Play, Radio, SkipBack, S
 import { calculateCrossfadeDelay, DualDeckMixer, type BeatAnalysis, type DeckSlot, type PlayerSnapshot } from "../audio/dual-deck-mixer";
 import { getUpcoming, insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming, type QueuePlacement } from "../domain/queue-operations";
 import { buildDjSearchPlan, findCandidateArtist, isSearchCandidateAllowed, normalizeSearchText } from "../domain/search-strategy";
+import { createSingleFlight } from "../domain/single-flight";
 import type { DjProfile, PreparedYouTubeSource, YouTubeSource } from "../shared/contracts";
 import { AddTrackDialog } from "./AddTrackDialog";
 import { UpcomingQueue } from "./UpcomingQueue";
 
-type SessionPhase = "IDLE" | "DISCOVERING" | "PREPARING" | "PLAYING" | "PAUSED" | "TRANSITIONING" | "ERROR";
+type SessionPhase = "IDLE" | "DISCOVERING" | "PREPARING" | "PLAYING" | "PAUSED" | "TRANSITIONING" | "RECOVERING" | "ERROR";
 
 const EMPTY_PLAYER: PlayerSnapshot = { durationSeconds: 0, positionSeconds: 0, playbackRate: 1, waveform: [], bpm: null, playing: false };
 const AUTO_CROSSFADE_SECONDS = 6;
 const TRANSITION_SAFETY_SECONDS = 0.5;
 const MIN_NEXT_INSERTION_SECONDS = 15;
+const REFILL_TARGET = 6;
+const RECOVERY_RETRY_MS = 2_000;
+const TRANSITION_RECHECK_MS = 500;
 const RECENT_TRACKS_STORAGE_KEY = "neoares.recent-tracks.v1";
 const recentSessionIdsByDj = new Map<string, string[]>();
 
@@ -36,9 +40,11 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   const nextReadyRef = useRef(false);
   const transitioningRef = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const preparationTimerRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const discoveryRoundRef = useRef(0);
-  const extendingRef = useRef(false);
+  const queueRefillRef = useRef(createSingleFlight<number>());
+  const nextPreparationRef = useRef<Promise<void> | null>(null);
   const queueActionRef = useRef(false);
   const phaseRef = useRef<SessionPhase>("IDLE");
 
@@ -49,27 +55,38 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   useEffect(() => () => {
     generationRef.current += 1;
     if (timerRef.current) window.clearTimeout(timerRef.current);
+    if (preparationTimerRef.current) window.clearTimeout(preparationTimerRef.current);
+    void window.desktop?.runtime.setAudioActive(false);
+    void window.desktop?.sources.cancelPlayback();
     void mixer.dispose();
   }, [mixer]);
 
   useEffect(() => {
+    if (phase !== "PLAYING" && phase !== "TRANSITIONING" && phase !== "RECOVERING") return;
     const interval = window.setInterval(() => {
       if (queueRef.current[indexRef.current]) setPlayer(mixer.getPlayerSnapshot(currentSlotRef.current));
-    }, 200);
+    }, 250);
     return () => window.clearInterval(interval);
-  }, [mixer]);
+  }, [mixer, phase]);
+
+  useEffect(() => {
+    const audioActive = phase === "PLAYING" || phase === "TRANSITIONING" || phase === "RECOVERING";
+    void window.desktop?.runtime.setAudioActive(audioActive);
+  }, [phase]);
 
   async function start(): Promise<void> {
     if (!dj || !window.desktop) return;
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     clearTimer();
-    mixer.stopAll();
+    mixer.reset();
     setError(null);
     setQueueError(null);
     setQueueAction(null);
     setSearchOpen(false);
     queueActionRef.current = false;
+    queueRefillRef.current = createSingleFlight<number>();
+    nextPreparationRef.current = null;
     setQueue([]);
     setCurrentIndex(0);
     setNextReady(false);
@@ -79,6 +96,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
     try {
       await mixer.unlock();
+      phaseRef.current = "DISCOVERING";
       setPhase("DISCOVERING");
       discoveryRoundRef.current = randomInteger(0, Math.max(8, dj.seeds.artists.length * 2));
       const recentIds = new Set(getRecentTrackIds(dj.id));
@@ -86,9 +104,10 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       if (generation !== generationRef.current) return;
       if (candidates.length < 2) throw new Error("No encontré suficientes canciones para iniciar este DJ. Intenta nuevamente.");
 
+      phaseRef.current = "PREPARING";
       setPhase("PREPARING");
       setQueue(candidates);
-      const initial = await prepareInitialDeck(mixer, candidates);
+      const initial = await prepareInitialDeck(mixer, candidates, () => generation === generationRef.current);
       if (generation !== generationRef.current) return;
       const initialQueue = initial.queue;
       queueRef.current = initialQueue;
@@ -102,30 +121,54 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       await mixer.play("A");
       setPlayer(mixer.getPlayerSnapshot("A"));
       setMixDetail(`Deck A ${initial.analysisA.bpm} BPM · preparando la siguiente canción · reproducción original 100%`);
+      phaseRef.current = "PLAYING";
       setPhase("PLAYING");
       scheduleFromCurrent();
       void prepareFollowing("B", 1, generation);
     } catch (cause) {
       if (generation !== generationRef.current) return;
       setError(readableError(cause));
+      phaseRef.current = "ERROR";
       setPhase("ERROR");
     }
   }
 
   async function advance(): Promise<void> {
-    if (transitioningRef.current || !nextReadyRef.current) return;
+    if (transitioningRef.current) return;
+    if (!nextReadyRef.current) {
+      if (phaseRef.current !== "PAUSED") {
+        phaseRef.current = "RECOVERING";
+        setPhase("RECOVERING");
+      }
+      setQueueError("La siguiente canción todavía se está preparando. NeoAres continuará automáticamente en cuanto esté lista.");
+      const inactiveSlot: DeckSlot = currentSlotRef.current === "A" ? "B" : "A";
+      void prepareFollowing(inactiveSlot, indexRef.current + 1, generationRef.current);
+      scheduleTransitionRecheck();
+      return;
+    }
     const nextIndex = indexRef.current + 1;
     const nextTrack = queueRef.current[nextIndex];
     if (!nextTrack) {
-      setError("La cola automática se agotó antes de poder ampliarse.");
-      setPhase("ERROR");
+      const generation = generationRef.current;
+      nextReadyRef.current = false;
+      setNextReady(false);
+      phaseRef.current = "RECOVERING";
+      setPhase("RECOVERING");
+      setQueueError("Ampliando la cola antes de continuar…");
+      const inactiveSlot: DeckSlot = currentSlotRef.current === "A" ? "B" : "A";
+      void ensureQueueDepth(generation).then(() => {
+        if (generation === generationRef.current) return prepareFollowing(inactiveSlot, nextIndex, generation);
+      });
+      scheduleTransitionRecheck();
       return;
     }
 
     transitioningRef.current = true;
+    const generation = generationRef.current;
     nextReadyRef.current = false;
     setNextReady(false);
     clearTimer();
+    phaseRef.current = "TRANSITIONING";
     setPhase("TRANSITIONING");
     const from = currentSlotRef.current;
     const to: DeckSlot = from === "A" ? "B" : "A";
@@ -137,42 +180,78 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       currentSlotRef.current = to;
       setCurrentIndex(nextIndex);
       setPlayer(mixer.getPlayerSnapshot(to));
+      setQueueError(null);
       scheduleFromCurrent();
-      if (queueRef.current.length - nextIndex <= 4) void extendQueue(generationRef.current);
+      void ensureQueueDepth(generation);
 
-      window.setTimeout(() => {
-        void prepareFollowing(from, nextIndex + 1, generationRef.current);
+      if (preparationTimerRef.current) window.clearTimeout(preparationTimerRef.current);
+      preparationTimerRef.current = window.setTimeout(() => {
+        preparationTimerRef.current = null;
+        void prepareFollowing(from, nextIndex + 1, generation);
       }, report.durationSeconds * 1_000 + 200);
     } catch (cause) {
       transitioningRef.current = false;
       setError(readableError(cause));
+      phaseRef.current = "ERROR";
       setPhase("ERROR");
     }
   }
 
   async function prepareFollowing(slot: DeckSlot, index: number, generation: number): Promise<void> {
+    if (nextPreparationRef.current) return nextPreparationRef.current;
+    const preparation = runPrepareFollowing(slot, index, generation);
+    nextPreparationRef.current = preparation;
+    try {
+      await preparation;
+    } finally {
+      if (nextPreparationRef.current === preparation) nextPreparationRef.current = null;
+    }
+  }
+
+  async function runPrepareFollowing(slot: DeckSlot, index: number, generation: number): Promise<void> {
     if (generation !== generationRef.current) return;
-    if (!queueRef.current[index]) await extendQueue(generation);
+    if (!queueRef.current[index]) await ensureQueueDepth(generation);
     while (generation === generationRef.current) {
       const source = queueRef.current[index];
-      if (!source) break;
+      if (!source) {
+        transitioningRef.current = false;
+        phaseRef.current = phaseRef.current === "PAUSED" ? "PAUSED" : "RECOVERING";
+        if (phaseRef.current === "RECOVERING") setPhase("RECOVERING");
+        setQueueError("Buscando una alternativa para mantener la música en reproducción…");
+        schedulePreparationRetry(slot, index, generation);
+        return;
+      }
       try {
-        await prepareOnDeck(mixer, slot, source);
+        await prepareOnDeck(mixer, slot, source, () => generation === generationRef.current);
         if (generation !== generationRef.current) return;
         nextReadyRef.current = true;
         transitioningRef.current = false;
         setNextReady(true);
-        setPhase("PLAYING");
-        if (phaseRef.current === "PLAYING") scheduleFromCurrent();
+        setQueueError(null);
+        if (phaseRef.current !== "PAUSED") {
+          phaseRef.current = "PLAYING";
+          setPhase("PLAYING");
+          scheduleFromCurrent();
+        }
+        void ensureQueueDepth(generation);
         return;
-      } catch {
+      } catch (cause) {
+        if (generation !== generationRef.current) return;
+        if (isSupersededDeckLoad(cause)) {
+          console.info("[continuity] deck-load-superseded", { generation, index, slot, sourceId: source.id });
+          return;
+        }
+        console.warn("[continuity] track-preparation-failed", {
+          generation,
+          index,
+          slot,
+          sourceId: source.id,
+          message: readableError(cause),
+        });
         queueRef.current = queueRef.current.filter((_, candidateIndex) => candidateIndex !== index);
         setQueue([...queueRef.current]);
       }
     }
-    transitioningRef.current = false;
-    setError("No quedan canciones descargables en la cola.");
-    setPhase("ERROR");
   }
 
   function scheduleFromCurrent(): void {
@@ -180,6 +259,20 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     const snapshot = mixer.getPlayerSnapshot(currentSlotRef.current);
     const delaySeconds = calculateCrossfadeDelay(snapshot.durationSeconds, snapshot.positionSeconds, AUTO_CROSSFADE_SECONDS, TRANSITION_SAFETY_SECONDS);
     timerRef.current = window.setTimeout(() => void advance(), delaySeconds * 1_000);
+  }
+
+  function scheduleTransitionRecheck(): void {
+    clearTimer();
+    timerRef.current = window.setTimeout(() => void advance(), TRANSITION_RECHECK_MS);
+  }
+
+  function schedulePreparationRetry(slot: DeckSlot, index: number, generation: number): void {
+    if (preparationTimerRef.current) window.clearTimeout(preparationTimerRef.current);
+    preparationTimerRef.current = window.setTimeout(() => {
+      preparationTimerRef.current = null;
+      if (generation !== generationRef.current) return;
+      void prepareFollowing(slot, index, generation);
+    }, RECOVERY_RETRY_MS);
   }
 
   function clearTimer(): void {
@@ -190,7 +283,10 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   function stop(): void {
     generationRef.current += 1;
     clearTimer();
-    mixer.stopAll();
+    if (preparationTimerRef.current) window.clearTimeout(preparationTimerRef.current);
+    preparationTimerRef.current = null;
+    void window.desktop?.sources.cancelPlayback();
+    mixer.reset();
     queueRef.current = [];
     setQueue([]);
     setCurrentIndex(0);
@@ -198,6 +294,8 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     nextReadyRef.current = false;
     transitioningRef.current = false;
     queueActionRef.current = false;
+    queueRefillRef.current = createSingleFlight<number>();
+    nextPreparationRef.current = null;
     setError(null);
     setQueueAction(null);
     setQueueError(null);
@@ -211,17 +309,25 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
   async function pausePlayback(): Promise<void> {
     clearTimer();
-    await mixer.pause();
-    setPlayer(mixer.getPlayerSnapshot(currentSlotRef.current));
     phaseRef.current = "PAUSED";
     setPhase("PAUSED");
+    await mixer.pause();
+    setPlayer(mixer.getPlayerSnapshot(currentSlotRef.current));
   }
 
   async function resumePlayback(): Promise<void> {
     await mixer.resume();
-    phaseRef.current = "PLAYING";
-    setPhase("PLAYING");
-    if (!queueActionRef.current) scheduleFromCurrent();
+    const resumedPhase: SessionPhase = nextReadyRef.current ? "PLAYING" : "RECOVERING";
+    phaseRef.current = resumedPhase;
+    setPhase(resumedPhase);
+    if (queueActionRef.current) return;
+    if (nextReadyRef.current) {
+      scheduleFromCurrent();
+    } else {
+      const inactiveSlot: DeckSlot = currentSlotRef.current === "A" ? "B" : "A";
+      void prepareFollowing(inactiveSlot, indexRef.current + 1, generationRef.current);
+      scheduleTransitionRecheck();
+    }
   }
 
   function seekTo(positionSeconds: number): void {
@@ -275,7 +381,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     setNextReady(false);
     const inactiveSlot: DeckSlot = currentSlotRef.current === "A" ? "B" : "A";
     try {
-      await prepareOnDeck(mixer, inactiveSlot, nextUpcoming[0]);
+      await prepareOnDeck(mixer, inactiveSlot, nextUpcoming[0], () => generation === generationRef.current);
       if (generation !== generationRef.current) return false;
       nextReadyRef.current = true;
       setNextReady(true);
@@ -283,6 +389,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       if (phase === "PLAYING") scheduleFromCurrent();
       return true;
     } catch (cause) {
+      if (generation !== generationRef.current) return false;
       const currentUpcoming = getUpcoming(queueRef.current, indexRef.current);
       const attemptedIds = new Set(nextUpcoming.map(({ id }) => id));
       const concurrentAdditions = currentUpcoming.filter(({ id }) => !attemptedIds.has(id) && !previousUpcoming.some((track) => track.id === id));
@@ -373,11 +480,12 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   }
 
   const busy = phase === "DISCOVERING" || phase === "PREPARING";
-  const running = phase === "PLAYING" || phase === "PAUSED" || phase === "TRANSITIONING";
-  const audible = phase === "PLAYING" || phase === "PAUSED" || phase === "TRANSITIONING";
-  const current = audible ? queue[currentIndex] ?? null : null;
-  const upcoming = queue.slice(audible ? currentIndex + 1 : 0);
-  const queueEditingDisabled = !running || phase === "TRANSITIONING" || queueAction !== null;
+  const running = phase === "PLAYING" || phase === "PAUSED" || phase === "TRANSITIONING" || phase === "RECOVERING";
+  const audible = running;
+  const hasLoadedCurrent = player.durationSeconds > 0 && Boolean(queue[currentIndex]);
+  const current = hasLoadedCurrent ? queue[currentIndex] : null;
+  const upcoming = hasLoadedCurrent ? getUpcoming(queue, currentIndex) : queue;
+  const queueEditingDisabled = !running || !nextReady || phase === "TRANSITIONING" || phase === "RECOVERING" || queueAction !== null;
   const displayedPosition = seekDraft ?? player.positionSeconds;
   const progress = player.durationSeconds ? displayedPosition / player.durationSeconds : 0;
 
@@ -408,7 +516,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
       <div className="autopilot-body">
         <div className={`now-playing ${audible ? "active" : ""}`}>
-          <div className="now-playing-label"><Radio size={15} /><span>{audible ? phase === "PAUSED" ? "En pausa" : "Sonando ahora" : busy ? "Preparando primera pista" : "Sesión detenida"}</span></div>
+          <div className="now-playing-label"><Radio size={15} /><span>{phase === "RECOVERING" ? "Recuperando continuidad" : audible ? phase === "PAUSED" ? "En pausa" : "Sonando ahora" : busy ? "Preparando primera pista" : "Sesión detenida"}</span></div>
           {current ? (
             <div className="now-track">
               <div><strong>{current.title}</strong><span>{current.creator}</span></div>
@@ -477,27 +585,44 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     </>
   );
 
-  async function extendQueue(generation: number): Promise<void> {
-    if (!dj || extendingRef.current || generation !== generationRef.current) return;
-    extendingRef.current = true;
-    try {
-      const excludedIds = new Set(queueRef.current.map(({ id }) => id));
-      for (const id of getRecentTrackIds(dj.id)) excludedIds.add(id);
-      const additions = await discoverFresh(5, excludedIds, 5);
-      if (generation !== generationRef.current) return;
-      if (additions.length === 0) return;
-      queueRef.current = [...queueRef.current, ...additions];
-      setQueue([...queueRef.current]);
-      rememberTracks(dj.id, additions);
-    } finally {
-      extendingRef.current = false;
-    }
+  async function ensureQueueDepth(generation: number): Promise<number> {
+    if (!dj || generation !== generationRef.current) return 0;
+    return queueRefillRef.current.run(async () => {
+      const upcomingCount = Math.max(0, queueRef.current.length - indexRef.current - 1);
+      const requested = Math.max(0, REFILL_TARGET - upcomingCount);
+      if (requested === 0) return 0;
+
+      try {
+        const strictExcludedIds = new Set(queueRef.current.map(({ id }) => id));
+        for (const id of getRecentTrackIds(dj.id)) strictExcludedIds.add(id);
+        const additions = await discoverFresh(requested, strictExcludedIds, 5);
+
+        if (generation !== generationRef.current) return 0;
+        if (additions.length < requested) {
+          const relaxedExcludedIds = new Set(queueRef.current.map(({ id }) => id));
+          for (const { id } of additions) relaxedExcludedIds.add(id);
+          additions.push(...await discoverFresh(requested - additions.length, relaxedExcludedIds, 3));
+        }
+
+        if (generation !== generationRef.current || additions.length === 0) return 0;
+        queueRef.current = [...queueRef.current, ...additions];
+        setQueue([...queueRef.current]);
+        rememberTracks(dj.id, additions);
+        return additions.length;
+      } catch (cause) {
+        if (generation === generationRef.current) {
+          console.warn("[continuity] queue-refill-failed", { generation, message: readableError(cause) });
+          setQueueError("No fue posible ampliar la cola todavía. NeoAres volverá a intentarlo sin detener la sesión.");
+        }
+        return 0;
+      }
+    });
   }
 }
 
 async function discover(dj: DjProfile, round: number, excludedIds = new Set<string>()): Promise<YouTubeSource[]> {
   const plan = buildDjSearchPlan(dj, round);
-  const searchedGroups = await window.desktop!.sources.searchMany(plan.queries, 6);
+  const searchedGroups = await window.desktop!.sources.searchMany(plan.queries, 6, "playback");
   const groups = shuffled(searchedGroups.map((group) => shuffled(group)));
   const interleaved: YouTubeSource[] = [];
   const seen = new Set(excludedIds);
@@ -570,13 +695,19 @@ function readStoredRecentTracks(): Record<string, string[]> {
   }));
 }
 
-async function prepareOnDeck(mixer: DualDeckMixer, slot: DeckSlot, source: YouTubeSource): Promise<BeatAnalysis> {
+async function prepareOnDeck(
+  mixer: DualDeckMixer,
+  slot: DeckSlot,
+  source: YouTubeSource,
+  isCurrent: () => boolean = () => true,
+): Promise<BeatAnalysis> {
   const bytes = await readPreparedSource(source);
+  if (!isCurrent()) throw new StalePreparationError();
   return mixer.load(slot, bytes);
 }
 
 async function readPreparedSource(source: YouTubeSource): Promise<Uint8Array> {
-  const prepared: PreparedYouTubeSource = await window.desktop!.sources.prepare(source);
+  const prepared: PreparedYouTubeSource = await window.desktop!.sources.prepare(source, "playback");
   try {
     return await window.desktop!.sources.read(prepared.leaseId);
   } finally {
@@ -584,7 +715,7 @@ async function readPreparedSource(source: YouTubeSource): Promise<Uint8Array> {
   }
 }
 
-async function prepareInitialDeck(mixer: DualDeckMixer, candidates: YouTubeSource[]): Promise<{
+async function prepareInitialDeck(mixer: DualDeckMixer, candidates: YouTubeSource[], isCurrent: () => boolean): Promise<{
   queue: YouTubeSource[];
   analysisA: BeatAnalysis;
 }> {
@@ -592,12 +723,13 @@ async function prepareInitialDeck(mixer: DualDeckMixer, candidates: YouTubeSourc
 
   for (const source of candidates) {
     try {
-      const analysisA = await prepareOnDeck(mixer, "A", source);
+      const analysisA = await prepareOnDeck(mixer, "A", source, isCurrent);
       return {
         queue: [source, ...candidates.filter(({ id }) => id !== source.id && !rejectedIds.has(id))],
         analysisA,
       };
-    } catch {
+    } catch (cause) {
+      if (!isCurrent() || cause instanceof StalePreparationError) throw new StalePreparationError();
       rejectedIds.add(source.id);
     }
   }
@@ -609,6 +741,7 @@ function SessionStatus({ phase }: { phase: SessionPhase }) {
   if (phase === "PLAYING") return <span className="session-chip live"><Radio size={12} /> Al aire</span>;
   if (phase === "PAUSED") return <span className="session-chip"><Pause size={12} /> En pausa</span>;
   if (phase === "TRANSITIONING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> Mezclando</span>;
+  if (phase === "RECOVERING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> Recuperando</span>;
   if (phase === "DISCOVERING" || phase === "PREPARING") return <span className="session-chip working"><LoaderCircle className="spin" size={12} /> Preparando</span>;
   if (phase === "ERROR") return <span className="session-chip error"><CircleAlert size={12} /> Error</span>;
   return <span className="session-chip"><CircleCheck size={12} /> Listo para iniciar</span>;
@@ -622,4 +755,15 @@ function formatDuration(seconds: number): string {
 function readableError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "La sesión no pudo continuar.";
   return message.replace(/^Error invoking remote method '[^']+': Error: /, "");
+}
+
+function isSupersededDeckLoad(cause: unknown): boolean {
+  return cause instanceof Error && cause.message.includes("fue reemplazada por una solicitud más reciente");
+}
+
+class StalePreparationError extends Error {
+  constructor() {
+    super("La preparación pertenece a una sesión anterior.");
+    this.name = "StalePreparationError";
+  }
 }

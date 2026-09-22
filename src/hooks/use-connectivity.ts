@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ConnectivityState = "ONLINE" | "OFFLINE";
 
-const RECHECK_INTERVAL_MS = 8_000;
+const RECHECK_INTERVAL_MS = 60_000;
 
 export function useConnectivity() {
   const [state, setState] = useState<ConnectivityState>("ONLINE");
@@ -61,15 +61,22 @@ export function useConnectivity() {
       setChecking(false);
     };
     const handleOnline = () => void check();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void check();
+    };
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     void check();
-    const interval = window.setInterval(() => void check(), RECHECK_INTERVAL_MS);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void check();
+    }, RECHECK_INTERVAL_MS);
     return () => {
       activeRef.current = false;
       window.clearInterval(interval);
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [check]);
 
