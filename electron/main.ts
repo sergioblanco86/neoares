@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, powerMonitor } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, powerMonitor } from "electron";
 import { access, cp, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { IPC_CHANNELS } from "./channels";
@@ -9,12 +9,13 @@ import { AppStateRepository, SessionRepository } from "./state-repository";
 import { MediaCache } from "./media-cache";
 import { MusicSourceService } from "./music-source-service";
 import { resolveLocale } from "../src/i18n/locale";
-import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
+import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, MediaControlCommand, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
 
 process.title = "NeoAres";
 app.name = "NeoAres";
 
 let mainWindow: BrowserWindow | null = null;
+const registeredMediaAccelerators = new Set<string>();
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const legacyUserDataPath = path.join(app.getPath("appData"), "youtubeshuffle");
 const neoAresUserDataPath = path.join(app.getPath("appData"), "NeoAres");
@@ -206,6 +207,9 @@ if (!hasSingleInstanceLock) {
   ipcMain.handle(IPC_CHANNELS.setAudioActive, (event, active: boolean) => {
     event.sender.setBackgroundThrottling(!(active === true));
   });
+  ipcMain.handle(IPC_CHANNELS.setMediaControlsActive, (_event, active: boolean) => {
+    setGlobalMediaControlsActive(active === true);
+  });
   ipcMain.handle(IPC_CHANNELS.searchSources, (_event, query: string, limit: number, scope?: SourceRequestScope) => sources.search(query, limit, scope));
   ipcMain.handle(IPC_CHANNELS.searchManySources, (_event, queries: string[], limitPerQuery: number, scope?: SourceRequestScope) => sources.searchMany(queries, limitPerQuery, scope));
   ipcMain.handle(IPC_CHANNELS.searchManyMusicSources, (_event, queries: string[], limitPerQuery: number, popularityLevel: PopularityLevel, scope?: SourceRequestScope) => musicSources.searchMany(queries, limitPerQuery, popularityLevel, scope));
@@ -228,6 +232,7 @@ if (!hasSingleInstanceLock) {
     clearInterval(sweepTimer);
     powerMonitor.removeListener("resume", cleanupAfterResume);
     sources.cancelAll();
+    setGlobalMediaControlsActive(false);
   });
 
   createWindow();
@@ -236,6 +241,28 @@ if (!hasSingleInstanceLock) {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+const MEDIA_ACCELERATORS: ReadonlyArray<[string, MediaControlCommand]> = [
+  ["MediaPlayPause", "TOGGLE_PLAYBACK"],
+  ["MediaNextTrack", "NEXT"],
+  ["MediaPreviousTrack", "BACK"],
+];
+
+function setGlobalMediaControlsActive(active: boolean): void {
+  if (!active) {
+    for (const accelerator of registeredMediaAccelerators) globalShortcut.unregister(accelerator);
+    registeredMediaAccelerators.clear();
+    return;
+  }
+  for (const [accelerator, command] of MEDIA_ACCELERATORS) {
+    if (registeredMediaAccelerators.has(accelerator)) continue;
+    const registered = globalShortcut.register(accelerator, () => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.mediaControl, command);
+    });
+    if (registered) registeredMediaAccelerators.add(accelerator);
+    else console.warn("[media-controls] global-shortcut-unavailable", { accelerator });
+  }
+}
 
 function protectedSessionSourceIds(snapshot: SessionSnapshot): string[] {
   return snapshot.queue

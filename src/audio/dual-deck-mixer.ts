@@ -107,9 +107,8 @@ export class DualDeckMixer {
     if (this.#context?.state === "suspended") await this.#context.resume();
   }
 
-  activateWhilePaused(from: DeckSlot, to: DeckSlot, offsetSeconds = 0): void {
+  activateImmediately(from: DeckSlot, to: DeckSlot, offsetSeconds = 0): void {
     const context = this.#ensureContext();
-    if (context.state !== "suspended") throw new Error("AUDIO_CONTEXT_NOT_PAUSED");
     this.#stop(from);
     this.#start(to, 1, context.currentTime, offsetSeconds);
   }

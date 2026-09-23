@@ -107,6 +107,8 @@ export type PreparedYouTubeSource = YouTubeSource & {
 
 export type SourceRequestScope = "user" | "playback";
 
+export type MediaControlCommand = "TOGGLE_PLAYBACK" | "NEXT" | "BACK";
+
 export type SupportedLocale = "es" | "en";
 
 export type LanguagePreference = "system" | SupportedLocale;
@@ -190,6 +192,8 @@ export type DesktopApi = {
   };
   runtime: {
     setAudioActive(active: boolean): Promise<void>;
+    setMediaControlsActive(active: boolean): Promise<void>;
+    onMediaControl(listener: (command: MediaControlCommand) => void): () => void;
   };
   djs: {
     list(): Promise<DjProfile[]>;

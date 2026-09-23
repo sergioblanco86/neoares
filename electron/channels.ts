@@ -19,6 +19,8 @@ export const IPC_CHANNELS = {
   saveCachedLoudness: "cache:save-loudness",
   checkConnectivity: "connectivity:check",
   setAudioActive: "runtime:set-audio-active",
+  setMediaControlsActive: "runtime:set-media-controls-active",
+  mediaControl: "runtime:media-control",
   searchSources: "sources:search",
   searchManySources: "sources:search-many",
   searchManyMusicSources: "sources:search-many-music",

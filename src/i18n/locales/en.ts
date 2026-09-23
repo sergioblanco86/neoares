@@ -151,8 +151,6 @@ export const en = {
   "queueAction.preparingRequested": "Preparing the requested song…",
   "queueAction.adding": "Adding to the queue…",
   "continuity.nextPreparing": "The next song is still being prepared. NeoAres will continue automatically as soon as it is ready.",
-  "continuity.preparingPrevious": "Preparing the previous song without stopping playback…",
-  "continuity.previousFailed": "The previous song could not be prepared. The current session will continue.",
   "continuity.expandingQueue": "Expanding the queue before continuing…",
   "continuity.findingAlternative": "Finding an alternative to keep the music playing…",
   "continuity.refillFailed": "The queue couldn't be expanded yet. NeoAres will try again without stopping the session.",

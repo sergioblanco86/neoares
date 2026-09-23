@@ -149,8 +149,6 @@ export const es = {
   "queueAction.preparingRequested": "Preparando la canción solicitada…",
   "queueAction.adding": "Agregando a la cola…",
   "continuity.nextPreparing": "La siguiente canción todavía se está preparando. NeoAres continuará automáticamente en cuanto esté lista.",
-  "continuity.preparingPrevious": "Preparando la canción anterior sin detener la reproducción…",
-  "continuity.previousFailed": "No fue posible preparar la canción anterior. La sesión actual continuará.",
   "continuity.expandingQueue": "Ampliando la cola antes de continuar…",
   "continuity.findingAlternative": "Buscando una alternativa para mantener la música en reproducción…",
   "continuity.refillFailed": "No fue posible ampliar la cola todavía. NeoAres volverá a intentarlo sin detener la sesión.",

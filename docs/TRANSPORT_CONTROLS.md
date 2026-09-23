@@ -7,7 +7,7 @@ This contract applies to on-screen controls, focused-window keyboard shortcuts, 
 - Space toggles pause and resume while NeoAres is focused.
 - Cmd/Ctrl + Right Arrow advances and crossfades when the next deck is ready.
 - Cmd/Ctrl + Left Arrow uses the same behavior as the on-screen back button.
-- Play, Pause, Next Track, and Previous Track media actions use the same command functions and remain available when the window is minimized if the operating system exposes NeoAres as its active media session.
+- While a DJ session is active, NeoAres registers only the operating system's Play/Pause, Next Track, and Previous Track media accelerators. Media Session remains as a fallback. Duplicate native and Media Session events within 100 milliseconds are collapsed into one command.
 - NeoAres does not register ordinary global keyboard shortcuts.
 
 Focused-window shortcuts are ignored during key repeat, while an editable control has focus, and while a modal dialog is open.
@@ -16,7 +16,9 @@ Focused-window shortcuts are ignored during key repeat, while an editable contro
 
 The first back command restarts the current song. A second back command within 1,000 milliseconds returns to the previous queue entry. At the beginning of the queue, every back command only restarts the current song.
 
-Returning to the previous entry does not reorder or duplicate the queue. The queue index moves back by one, making the song that was playing the first upcoming entry. During playback NeoAres prepares the previous audio on the inactive deck and crossfades to it. While paused, it changes decks without resuming audio.
+Returning to the previous entry does not reorder or duplicate the queue. The queue index moves back by one, making the song that was playing the first upcoming entry. NeoAres prepares the previous audio on the inactive deck and then switches directly to it without a fade. While paused, it changes decks without resuming audio.
+
+Previous-track preparation and navigation are silent UI operations: they do not display transient informational or error banners.
 
 The previous, current, and next source files are protected from cache cleanup while an active session snapshot references them.
 

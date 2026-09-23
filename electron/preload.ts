@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "./channels";
-import type { AppState, CacheCleanupResult, CachePolicy, CacheStats, DesktopApi, DjProfile, LoudnessAnalysis, PreparedYouTubeSource, SessionSnapshot, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
+import type { AppState, CacheCleanupResult, CachePolicy, CacheStats, DesktopApi, DjProfile, LoudnessAnalysis, MediaControlCommand, PreparedYouTubeSource, SessionSnapshot, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
 
 const api: DesktopApi = {
   platform: process.platform,
@@ -13,6 +13,12 @@ const api: DesktopApi = {
   },
   runtime: {
     setAudioActive: (active) => ipcRenderer.invoke(IPC_CHANNELS.setAudioActive, active) as Promise<void>,
+    setMediaControlsActive: (active) => ipcRenderer.invoke(IPC_CHANNELS.setMediaControlsActive, active) as Promise<void>,
+    onMediaControl: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, command: MediaControlCommand) => listener(command);
+      ipcRenderer.on(IPC_CHANNELS.mediaControl, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.mediaControl, handler);
+    },
   },
   djs: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.listDjs) as Promise<DjProfile[]>,
