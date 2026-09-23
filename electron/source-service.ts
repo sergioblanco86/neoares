@@ -217,7 +217,20 @@ function normalizePreparationSource(input: YouTubeSource): YouTubeSource {
     ? Math.max(0, input.durationSeconds)
     : 0;
   const thumbnailUrl = typeof input.thumbnailUrl === "string" ? input.thumbnailUrl : null;
-  return { id: reference.id, canonicalUrl: reference.canonicalUrl, title, creator, durationSeconds, thumbnailUrl };
+  const catalog = input.catalog === "YOUTUBE_MUSIC" ? "YOUTUBE_MUSIC" : "YOUTUBE";
+  const requestedByUser = input.requestedByUser === true;
+  const musicMetadata = normalizeMusicMetadata(input.musicMetadata);
+  return {
+    id: reference.id,
+    canonicalUrl: reference.canonicalUrl,
+    title,
+    creator,
+    durationSeconds,
+    thumbnailUrl,
+    catalog,
+    ...(requestedByUser ? { requestedByUser: true } : {}),
+    ...(musicMetadata ? { musicMetadata } : {}),
+  };
 }
 
 async function findCachedAudio(cacheRoot: string, id: string): Promise<string | null> {
@@ -245,7 +258,18 @@ function normalizeMetadata(metadata: YtDlpMetadata, fallbackId: string, canonica
   const thumbnailUrl = typeof metadata.thumbnail === "string"
     ? metadata.thumbnail
     : `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
-  return { id, canonicalUrl, title, creator, durationSeconds, thumbnailUrl };
+  return { id, canonicalUrl, title, creator, durationSeconds, thumbnailUrl, catalog: "YOUTUBE" };
+}
+
+function normalizeMusicMetadata(value: YouTubeSource["musicMetadata"]): YouTubeSource["musicMetadata"] | undefined {
+  if (!value || value.resultType !== "SONG" || !Array.isArray(value.artists)) return undefined;
+  const artists = value.artists.filter((artist): artist is string => typeof artist === "string" && Boolean(artist.trim())).map((artist) => artist.trim());
+  if (artists.length === 0) return undefined;
+  return {
+    resultType: "SONG",
+    artists,
+    album: typeof value.album === "string" && value.album.trim() ? value.album.trim() : null,
+  };
 }
 
 async function resolveExecutable(name: "yt-dlp"): Promise<string> {

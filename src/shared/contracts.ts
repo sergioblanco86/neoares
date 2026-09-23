@@ -85,6 +85,13 @@ export type YouTubeSource = {
   creator: string;
   durationSeconds: number;
   thumbnailUrl: string | null;
+  catalog?: "YOUTUBE" | "YOUTUBE_MUSIC";
+  requestedByUser?: boolean;
+  musicMetadata?: {
+    resultType: "SONG";
+    artists: string[];
+    album: string | null;
+  };
 };
 
 export type PreparedYouTubeSource = YouTubeSource & {
@@ -206,6 +213,7 @@ export type DesktopApi = {
   sources: {
     search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;
     searchMany(queries: string[], limitPerQuery: number, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
+    searchMusicMany(queries: string[], limitPerQuery: number, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
     inspect(url: string, scope?: SourceRequestScope): Promise<YouTubeSource>;
     prepare(source: YouTubeSource, scope?: SourceRequestScope): Promise<PreparedYouTubeSource>;
     read(leaseId: string): Promise<Uint8Array>;

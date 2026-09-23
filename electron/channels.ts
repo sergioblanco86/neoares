@@ -21,6 +21,7 @@ export const IPC_CHANNELS = {
   setAudioActive: "runtime:set-audio-active",
   searchSources: "sources:search",
   searchManySources: "sources:search-many",
+  searchManyMusicSources: "sources:search-many-music",
   inspectSource: "sources:inspect",
   prepareSource: "sources:prepare",
   readSource: "sources:read",

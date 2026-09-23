@@ -535,14 +535,15 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   }
 
   async function addRequestedTrack(track: YouTubeSource, placement: QueuePlacement): Promise<boolean> {
+    const requestedTrack: YouTubeSource = { ...track, catalog: track.catalog ?? "YOUTUBE", requestedByUser: true };
     const upcomingTracks = getUpcoming(queueRef.current, indexRef.current);
-    if (upcomingTracks.some(({ id }) => id === track.id)) throw new Error(t("error.alreadyUpcoming"));
+    if (upcomingTracks.some(({ id }) => id === requestedTrack.id)) throw new Error(t("error.alreadyUpcoming"));
 
     if (placement === "END") {
-      const nextUpcoming = insertUpcoming(upcomingTracks, track, "END");
+      const nextUpcoming = insertUpcoming(upcomingTracks, requestedTrack, "END");
       queueRef.current = setUpcoming(queueRef.current, indexRef.current, nextUpcoming);
       setQueue([...queueRef.current]);
-      if (dj) rememberTracks(dj.id, [track]);
+      if (dj) rememberTracks(dj.id, [requestedTrack]);
       return true;
     }
 
@@ -561,7 +562,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     }
 
     return runQueueAction(placement === "NEXT" ? "queueAction.preparingRequested" : "queueAction.adding", async () => {
-      return commitUpcoming(insertUpcoming(upcomingTracks, track, placement));
+      return commitUpcoming(insertUpcoming(upcomingTracks, requestedTrack, placement));
     });
   }
 
@@ -768,7 +769,16 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
 async function discover(dj: DjProfile, round: number, excludedIds = new Set<string>()): Promise<YouTubeSource[]> {
   const plan = buildDjSearchPlan(dj, round);
-  const searchedGroups = await window.desktop!.sources.searchMany(plan.queries, 6, "playback");
+  let searchedGroups: YouTubeSource[][];
+  try {
+    searchedGroups = await window.desktop!.sources.searchMusicMany(plan.musicQueries, 6, "playback");
+    if (searchedGroups.every((group) => group.length === 0)) throw new Error("MUSIC_SEARCH_EMPTY_RESULTS");
+  } catch (cause) {
+    console.warn("[discovery] music-catalog-unavailable", {
+      message: cause instanceof Error ? cause.message : "UNKNOWN",
+    });
+    searchedGroups = await window.desktop!.sources.searchMany(plan.queries, 6, "playback");
+  }
   const groups = shuffled(searchedGroups.map((group) => shuffled(group)));
   const interleaved: YouTubeSource[] = [];
   const seen = new Set(excludedIds);

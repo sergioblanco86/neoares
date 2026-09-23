@@ -15,6 +15,8 @@ describe("DJ search strategy", () => {
     expect(plan.queries.some((query) => query.includes("Ramones"))).toBe(true);
     expect(plan.queries.some((query) => query.includes("The Specials"))).toBe(true);
     expect(plan.queries.every((query) => !query.startsWith('"Punk"'))).toBe(true);
+    expect(plan.queries.every((query) => !query.includes("studio recording"))).toBe(true);
+    expect(plan.musicQueries.some((query) => query === "Ramones")).toBe(true);
   });
 
   it("rotates through the genre artists when the queue needs more music", () => {
@@ -113,6 +115,8 @@ describe("DJ search strategy", () => {
       creator: "RHINO",
       durationSeconds: 134,
       thumbnailUrl: null,
+      catalog: "YOUTUBE_MUSIC",
+      musicMetadata: { resultType: "SONG", artists: ["Ramones"], album: "Ramones" },
     }, plan)).toBe(true);
   });
 
@@ -157,5 +161,55 @@ describe("DJ search strategy", () => {
       durationSeconds: 134,
       thumbnailUrl: null,
     })).toMatchObject({ allowed: true, confidence: "HIGH", contentType: "MUSIC" });
+  });
+
+  it("rejects trailers and isolated instrument or vocal tracks", () => {
+    const rejected = [
+      "AGNOSTIC FRONT - Recording Get Loud! (OFFICIAL TRAILER)",
+      "Agnostic Front - Addiction (Vocals Only) / No Backing Track",
+      "Agnostic Front - Alright (Guitar Tab + Cover)",
+      "Agnostic Front - No Mercy (Guitar Only)",
+    ];
+
+    for (const title of rejected) {
+      expect(assessMusicCandidate({
+        id: "abcdefghijk",
+        canonicalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+        title,
+        creator: "Agnostic Front",
+        durationSeconds: 180,
+        thumbnailUrl: null,
+      })).toMatchObject({ allowed: false });
+    }
+  });
+
+  it("does not confuse a legitimate song title containing only with an isolated track", () => {
+    expect(assessMusicCandidate({
+      id: "JX6M2czpID4",
+      canonicalUrl: "https://www.youtube.com/watch?v=JX6M2czpID4",
+      title: "Only in America",
+      creator: "Agnostic Front",
+      durationSeconds: 100,
+      thumbnailUrl: null,
+      catalog: "YOUTUBE_MUSIC",
+      musicMetadata: { resultType: "SONG", artists: ["Agnostic Front"], album: "The American Dream Died" },
+    })).toMatchObject({ allowed: true, contentType: "MUSIC" });
+  });
+
+  it("does not allow unknown autonomous content but honors an explicit user selection", () => {
+    const unknown = {
+      id: "abcdefghijk",
+      canonicalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+      title: "Rare upload",
+      creator: "Small channel",
+      durationSeconds: 180,
+      thumbnailUrl: null,
+    };
+
+    expect(assessMusicCandidate(unknown)).toMatchObject({ allowed: false, contentType: "UNKNOWN" });
+    expect(assessMusicCandidate({ ...unknown, requestedByUser: true })).toMatchObject({
+      allowed: true,
+      positiveReasons: ["explicit-user-selection"],
+    });
   });
 });

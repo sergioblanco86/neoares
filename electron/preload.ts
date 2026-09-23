@@ -41,6 +41,7 @@ const api: DesktopApi = {
   sources: {
     search: (query, limit, scope) => ipcRenderer.invoke(IPC_CHANNELS.searchSources, query, limit, scope) as Promise<YouTubeSource[]>,
     searchMany: (queries, limitPerQuery, scope) => ipcRenderer.invoke(IPC_CHANNELS.searchManySources, queries, limitPerQuery, scope) as Promise<YouTubeSource[][]>,
+    searchMusicMany: (queries, limitPerQuery, scope) => ipcRenderer.invoke(IPC_CHANNELS.searchManyMusicSources, queries, limitPerQuery, scope) as Promise<YouTubeSource[][]>,
     inspect: (url, scope) => ipcRenderer.invoke(IPC_CHANNELS.inspectSource, url, scope) as Promise<YouTubeSource>,
     prepare: (source, scope) => ipcRenderer.invoke(IPC_CHANNELS.prepareSource, source, scope) as Promise<PreparedYouTubeSource>,
     read: (leaseId) => ipcRenderer.invoke(IPC_CHANNELS.readSource, leaseId) as Promise<Uint8Array>,
