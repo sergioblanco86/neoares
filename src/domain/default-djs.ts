@@ -1,4 +1,4 @@
-import type { DjProfile } from "../shared/contracts";
+import type { DjProfile, PopularityLevel } from "../shared/contracts";
 
 const now = "2026-09-18T20:00:00.000Z";
 
@@ -36,6 +36,7 @@ export function createDefaultDj(input: {
   prompt: string;
   genres: string[];
   artists?: string[];
+  popularityLevel?: PopularityLevel;
   era?: {
     label: string;
     startYear: number | null;
@@ -73,6 +74,7 @@ export function createDefaultDj(input: {
       contentTypes: ["UNKNOWN"],
     },
     curation: {
+      popularityLevel: input.popularityLevel ?? 3,
       familiarity: 0.72,
       discovery: 0.28,
       sameArtistCooldownMinutes: 45,

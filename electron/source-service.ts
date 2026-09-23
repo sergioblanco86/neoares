@@ -269,6 +269,10 @@ function normalizeMusicMetadata(value: YouTubeSource["musicMetadata"]): YouTubeS
     resultType: "SONG",
     artists,
     album: typeof value.album === "string" && value.album.trim() ? value.album.trim() : null,
+    ...(typeof value.popularityScore === "number" && Number.isFinite(value.popularityScore)
+      ? { popularityScore: Math.min(1, Math.max(0, value.popularityScore)) }
+      : {}),
+    ...(value.discoveryPath === "SEARCH" || value.discoveryPath === "ALBUM" ? { discoveryPath: value.discoveryPath } : {}),
   };
 }
 

@@ -771,7 +771,7 @@ async function discover(dj: DjProfile, round: number, excludedIds = new Set<stri
   const plan = buildDjSearchPlan(dj, round);
   let searchedGroups: YouTubeSource[][];
   try {
-    searchedGroups = await window.desktop!.sources.searchMusicMany(plan.musicQueries, 6, "playback");
+    searchedGroups = await window.desktop!.sources.searchMusicMany(plan.musicQueries, 6, dj.curation.popularityLevel ?? 3, "playback");
     if (searchedGroups.every((group) => group.length === 0)) throw new Error("MUSIC_SEARCH_EMPTY_RESULTS");
   } catch (cause) {
     console.warn("[discovery] music-catalog-unavailable", {

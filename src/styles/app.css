@@ -2108,21 +2108,24 @@ button:disabled {
   gap: 14px;
 }
 
-.era-fieldset {
+.era-fieldset,
+.popularity-fieldset {
   margin: 0;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
-.era-fieldset legend {
+.era-fieldset legend,
+.popularity-fieldset legend {
   padding: 0 6px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 650;
 }
 
-.era-fieldset > small {
+.era-fieldset > small,
+.popularity-fieldset > small {
   display: block;
   margin-top: 10px;
   color: var(--text-subtle);
@@ -2130,8 +2133,80 @@ button:disabled {
   line-height: 1.5;
 }
 
+.popularity-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 138px;
+  align-items: center;
+  gap: 16px;
+}
+
+.dialog .popularity-control input[type="range"] {
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.popularity-control output {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.popularity-marks {
+  display: grid;
+  width: calc(100% - 154px);
+  grid-template-columns: repeat(5, 1fr);
+  margin-top: 2px;
+  color: var(--text-subtle);
+  font-size: 9px;
+  text-align: center;
+}
+
+.popularity-marks span:first-child {
+  text-align: left;
+}
+
+.popularity-marks span:last-child {
+  text-align: right;
+}
+
 .era-fields {
   grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(100px, 0.5fr));
+}
+
+.popularity-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, auto);
+  align-items: center;
+  gap: 16px;
+}
+
+.popularity-control input {
+  width: 100%;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.popularity-control output {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.popularity-marks {
+  display: flex;
+  justify-content: space-between;
+  width: calc(100% - 146px);
+  margin-top: 2px;
+  color: var(--text-subtle);
+  font-size: 9px;
 }
 
 .form-error {

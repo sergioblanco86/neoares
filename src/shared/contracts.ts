@@ -15,6 +15,8 @@ export type TransitionType =
   | "HARD_CUT"
   | "EMERGENCY_LOOP";
 
+export type PopularityLevel = 1 | 2 | 3 | 4 | 5;
+
 export type DjProfile = {
   schemaVersion: 1;
   id: string;
@@ -50,6 +52,7 @@ export type DjProfile = {
     contentTypes: ContentType[];
   };
   curation: {
+    popularityLevel?: PopularityLevel;
     familiarity: number;
     discovery: number;
     sameArtistCooldownMinutes: number;
@@ -91,6 +94,8 @@ export type YouTubeSource = {
     resultType: "SONG";
     artists: string[];
     album: string | null;
+    popularityScore?: number;
+    discoveryPath?: "SEARCH" | "ALBUM";
   };
 };
 
@@ -213,7 +218,7 @@ export type DesktopApi = {
   sources: {
     search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;
     searchMany(queries: string[], limitPerQuery: number, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
-    searchMusicMany(queries: string[], limitPerQuery: number, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
+    searchMusicMany(queries: string[], limitPerQuery: number, popularityLevel: PopularityLevel, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
     inspect(url: string, scope?: SourceRequestScope): Promise<YouTubeSource>;
     prepare(source: YouTubeSource, scope?: SourceRequestScope): Promise<PreparedYouTubeSource>;
     read(leaseId: string): Promise<Uint8Array>;

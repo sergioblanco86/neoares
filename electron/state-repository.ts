@@ -165,7 +165,9 @@ function isMusicMetadata(value: unknown): boolean {
     && Array.isArray(value.artists)
     && value.artists.length > 0
     && value.artists.every((artist) => typeof artist === "string" && Boolean(artist.trim()))
-    && (value.album === null || typeof value.album === "string");
+    && (value.album === null || typeof value.album === "string")
+    && (value.popularityScore === undefined || (typeof value.popularityScore === "number" && value.popularityScore >= 0 && value.popularityScore <= 1))
+    && (value.discoveryPath === undefined || value.discoveryPath === "SEARCH" || value.discoveryPath === "ALBUM");
 }
 
 function isTimestamp(value: unknown): value is string {

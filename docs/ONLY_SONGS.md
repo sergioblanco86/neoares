@@ -23,6 +23,20 @@ Strong rejection always takes precedence over positive metadata. A result marked
 
 Unknown general-search content is rejected. Unknown never means accepted.
 
+## Per-DJ popularity
+
+Every DJ may persist `curation.popularityLevel` as an integer from 1 to 5. Existing profiles without the field behave as level 3.
+
+- **1 — hidden gems:** select album tracks and exclude the artist's top-song shelf whenever the catalogue exposes it.
+- **2 — less familiar:** approximately 25% top results and 75% album tracks.
+- **3 — balanced:** approximately half top results and half album tracks.
+- **4 — popular:** approximately 80% top results with limited album exploration.
+- **5 — hits only:** use the top song-search results and make no album-detail requests.
+
+Album selection favors releases closest to the rotating era year in the autonomous query. Levels 3 and 4 inspect at most one album per artist/query; levels 1 and 2 may inspect two. Artist and album pages are cached for the running process so queue replenishment does not repeat the same catalogue work.
+
+Popularity is a curation target, not an absolute global play-count measurement: the catalogue does not expose a stable, comparable play count for every song. The contract therefore uses ranking and artist top-song placement for popularity, and album membership plus exclusion from top songs for discovery.
+
 ## Continuity fallback
 
 If the music catalogue is unavailable or returns no results for an entire discovery batch, NeoAres may query general YouTube to preserve playback continuity. That fallback uses the strict assessment; it cannot lower the acceptance threshold merely to fill the queue.
@@ -50,4 +64,3 @@ Must accept when returned as a YouTube Music song:
 - `Only in America` by Agnostic Front
 - songs whose legitimate title contains `only`
 - official album tracks with clean titles and album metadata
-

@@ -9,7 +9,7 @@ import { AppStateRepository, SessionRepository } from "./state-repository";
 import { MediaCache } from "./media-cache";
 import { MusicSourceService } from "./music-source-service";
 import { resolveLocale } from "../src/i18n/locale";
-import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, SessionSnapshot, SourceRequestScope, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
+import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
 
 process.title = "NeoAres";
 app.name = "NeoAres";
@@ -208,7 +208,7 @@ if (!hasSingleInstanceLock) {
   });
   ipcMain.handle(IPC_CHANNELS.searchSources, (_event, query: string, limit: number, scope?: SourceRequestScope) => sources.search(query, limit, scope));
   ipcMain.handle(IPC_CHANNELS.searchManySources, (_event, queries: string[], limitPerQuery: number, scope?: SourceRequestScope) => sources.searchMany(queries, limitPerQuery, scope));
-  ipcMain.handle(IPC_CHANNELS.searchManyMusicSources, (_event, queries: string[], limitPerQuery: number, scope?: SourceRequestScope) => musicSources.searchMany(queries, limitPerQuery, scope));
+  ipcMain.handle(IPC_CHANNELS.searchManyMusicSources, (_event, queries: string[], limitPerQuery: number, popularityLevel: PopularityLevel, scope?: SourceRequestScope) => musicSources.searchMany(queries, limitPerQuery, popularityLevel, scope));
   ipcMain.handle(IPC_CHANNELS.inspectSource, (_event, url: string, scope?: SourceRequestScope) => sources.inspect(url, scope));
   ipcMain.handle(IPC_CHANNELS.prepareSource, (_event, source: YouTubeSource, scope?: SourceRequestScope) => sources.prepare(source, scope));
   ipcMain.handle(IPC_CHANNELS.readSource, (_event, leaseId: string) => sources.read(leaseId));
