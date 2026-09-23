@@ -239,7 +239,7 @@ if (!hasSingleInstanceLock) {
 
 function protectedSessionSourceIds(snapshot: SessionSnapshot): string[] {
   return snapshot.queue
-    .slice(snapshot.currentIndex, snapshot.currentIndex + 2)
+    .slice(Math.max(0, snapshot.currentIndex - 1), snapshot.currentIndex + 2)
     .map(({ id }) => id);
 }
 
