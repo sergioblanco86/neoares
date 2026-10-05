@@ -31,6 +31,18 @@ export function canReplaceWithAutonomousTrack(
   return respectsArtistDiversityAtIndex(prospective, index);
 }
 
+export function pruneUpcomingArtistDuplicates(
+  queue: readonly YouTubeSource[],
+  currentIndex: number,
+): YouTubeSource[] {
+  const protectedEnd = Math.min(queue.length, Math.max(0, currentIndex + 1));
+  const result = queue.slice(0, protectedEnd);
+  for (const track of queue.slice(protectedEnd)) {
+    if (canAppendAutonomousTrack(result, track)) result.push(track);
+  }
+  return result;
+}
+
 function respectsArtistDiversityAtIndex(queue: readonly YouTubeSource[], index: number): boolean {
   const artistKey = primaryArtistKey(queue[index]);
   if (!artistKey) return true;

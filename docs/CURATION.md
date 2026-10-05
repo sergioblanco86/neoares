@@ -139,6 +139,9 @@ Valores iniciales recomendados, configurables por DJ:
   el conteo del artista;
 - el artista puede volver cuando sus apariciones anteriores hayan salido de la
   ventana de diez posiciones;
+- al restaurar una sesión antigua se conserva la pista actual y el historial,
+  se eliminan únicamente los excesos automáticos de la cola futura y se rellena
+  de nuevo hasta el objetivo;
 - una petición explícita del usuario es un override intencional de diversidad;
 - artista invitado: no cuenta como repetición si no es protagonista;
 - máximo dos pistas consecutivas del mismo subgénero muy específico;

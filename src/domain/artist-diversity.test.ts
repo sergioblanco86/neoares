@@ -5,6 +5,7 @@ import {
   canAppendAutonomousTrack,
   canReplaceWithAutonomousTrack,
   primaryArtistKey,
+  pruneUpcomingArtistDuplicates,
 } from "./artist-diversity";
 
 describe("artist diversity", () => {
@@ -58,6 +59,23 @@ describe("artist diversity", () => {
   it("treats an explicit user request as an intentional override", () => {
     const queue = [track("a1", "Rancid"), track("a2", "Rancid")];
     expect(canAppendAutonomousTrack(queue, { ...track("a3", "Rancid"), requestedByUser: true })).toBe(true);
+  });
+
+  it("prunes old automatic duplicates only from the upcoming part of a restored queue", () => {
+    const queue = [
+      track("played", "Rancid"),
+      track("current", "Rancid"),
+      track("next", "NOFX"),
+      track("duplicate", "Rancid"),
+      track("later", "Pennywise"),
+    ];
+
+    expect(pruneUpcomingArtistDuplicates(queue, 1).map(({ id }) => id)).toEqual([
+      "played",
+      "current",
+      "next",
+      "later",
+    ]);
   });
 });
 

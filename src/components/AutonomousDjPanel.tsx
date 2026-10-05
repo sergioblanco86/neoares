@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, LoaderCircle, Pause, Play, Radio, SkipBack, SkipForward, Square, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import { calculateCrossfadeDelay, DualDeckMixer, type BeatAnalysis, type DeckSlot, type PlayerSnapshot } from "../audio/dual-deck-mixer";
-import { canAppendAutonomousTrack, canReplaceWithAutonomousTrack } from "../domain/artist-diversity";
+import { canAppendAutonomousTrack, canReplaceWithAutonomousTrack, pruneUpcomingArtistDuplicates } from "../domain/artist-diversity";
 import { getUpcoming, insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming, type QueuePlacement } from "../domain/queue-operations";
 import { assessMusicCandidate, buildDjSearchPlan, findCandidateArtist, isSearchCandidateAllowed, normalizeSearchText } from "../domain/search-strategy";
 import { createSingleFlight } from "../domain/single-flight";
@@ -75,13 +75,15 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         void clearActiveSnapshot();
         return;
       }
-      sessionIdRef.current = snapshot.sessionId;
+      const restoredQueue = pruneUpcomingArtistDuplicates(snapshot.queue, snapshot.currentIndex);
+      const restoredSnapshot = { ...snapshot, queue: restoredQueue };
+      sessionIdRef.current = restoredSnapshot.sessionId;
       discoveryRoundRef.current = snapshot.discoveryRound;
-      queueRef.current = snapshot.queue;
-      indexRef.current = snapshot.currentIndex;
-      setQueue(snapshot.queue);
-      setCurrentIndex(snapshot.currentIndex);
-      setRestorableSnapshot(snapshot);
+      queueRef.current = restoredQueue;
+      indexRef.current = restoredSnapshot.currentIndex;
+      setQueue(restoredQueue);
+      setCurrentIndex(restoredSnapshot.currentIndex);
+      setRestorableSnapshot(restoredSnapshot);
       phaseRef.current = "RESTORABLE";
       setPhase("RESTORABLE");
     }).catch((cause) => {
