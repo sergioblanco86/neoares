@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, LoaderCircle, Pause, Play, Radio, SkipBack, SkipForward, Square, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import { calculateCrossfadeDelay, DualDeckMixer, type BeatAnalysis, type DeckSlot, type PlayerSnapshot } from "../audio/dual-deck-mixer";
+import { canAppendAutonomousTrack, canReplaceWithAutonomousTrack } from "../domain/artist-diversity";
 import { getUpcoming, insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming, type QueuePlacement } from "../domain/queue-operations";
 import { assessMusicCandidate, buildDjSearchPlan, findCandidateArtist, isSearchCandidateAllowed, normalizeSearchText } from "../domain/search-strategy";
 import { createSingleFlight } from "../domain/single-flight";
@@ -618,7 +619,10 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       const upcomingTracks = getUpcoming(queueRef.current, indexRef.current);
       const excludedIds = new Set(queueRef.current.map(({ id }) => id));
       for (const id of getRecentTrackIds(dj!.id)) excludedIds.add(id);
-      const [replacement] = await discoverFresh(1, excludedIds, 5);
+      const absoluteIndex = indexRef.current + index + 1;
+      const diversityContext = queueRef.current.slice(0, absoluteIndex);
+      const candidates = await discoverFresh(6, excludedIds, 5, diversityContext);
+      const replacement = candidates.find((candidate) => canReplaceWithAutonomousTrack(queueRef.current, absoluteIndex, candidate));
       if (!replacement) throw new Error(t("error.noReplacement"));
       return commitUpcoming(replaceUpcomingTrack(upcomingTracks, index, replacement));
     });
@@ -628,7 +632,8 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     void runQueueAction("queueAction.findingFour", async () => {
       const excludedIds = new Set(queueRef.current.map(({ id }) => id));
       for (const id of getRecentTrackIds(dj!.id)) excludedIds.add(id);
-      const replacements = await discoverFresh(4, excludedIds, 7);
+      const diversityContext = queueRef.current.slice(0, indexRef.current + 1);
+      const replacements = await discoverFresh(4, excludedIds, 7, diversityContext);
       if (replacements.length < 4) throw new Error(t("error.noFourReplacements"));
       return commitUpcoming(replacements.slice(0, 4));
     });
@@ -670,7 +675,12 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     });
   }
 
-  async function discoverFresh(count: number, excludedIds: Set<string>, attempts: number): Promise<YouTubeSource[]> {
+  async function discoverFresh(
+    count: number,
+    excludedIds: Set<string>,
+    attempts: number,
+    diversityContext: readonly YouTubeSource[] = [],
+  ): Promise<YouTubeSource[]> {
     if (!dj) return [];
     const found: YouTubeSource[] = [];
     const usedIds = new Set(excludedIds);
@@ -679,6 +689,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       discoveryRoundRef.current += 1;
       for (const track of discovered) {
         if (usedIds.has(track.id)) continue;
+        if (!canAppendAutonomousTrack([...diversityContext, ...found], track)) continue;
         found.push(track);
         usedIds.add(track.id);
         if (found.length === count) break;
@@ -882,13 +893,18 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       try {
         const strictExcludedIds = new Set(queueRef.current.map(({ id }) => id));
         for (const id of getRecentTrackIds(dj.id)) strictExcludedIds.add(id);
-        const additions = await discoverFresh(requested, strictExcludedIds, 5);
+        const additions = await discoverFresh(requested, strictExcludedIds, 5, queueRef.current);
 
         if (generation !== generationRef.current) return 0;
         if (additions.length < requested) {
           const relaxedExcludedIds = new Set(queueRef.current.map(({ id }) => id));
           for (const { id } of additions) relaxedExcludedIds.add(id);
-          additions.push(...await discoverFresh(requested - additions.length, relaxedExcludedIds, 3));
+          additions.push(...await discoverFresh(
+            requested - additions.length,
+            relaxedExcludedIds,
+            3,
+            [...queueRef.current, ...additions],
+          ));
         }
 
         if (generation !== generationRef.current || additions.length === 0) return 0;
