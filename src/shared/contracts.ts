@@ -15,6 +15,8 @@ export type TransitionType =
   | "HARD_CUT"
   | "EMERGENCY_LOOP";
 
+export type PopularityLevel = 1 | 2 | 3 | 4 | 5;
+
 export type DjProfile = {
   schemaVersion: 1;
   id: string;
@@ -50,6 +52,7 @@ export type DjProfile = {
     contentTypes: ContentType[];
   };
   curation: {
+    popularityLevel?: PopularityLevel;
     familiarity: number;
     discovery: number;
     sameArtistCooldownMinutes: number;
@@ -85,6 +88,15 @@ export type YouTubeSource = {
   creator: string;
   durationSeconds: number;
   thumbnailUrl: string | null;
+  catalog?: "YOUTUBE" | "YOUTUBE_MUSIC";
+  requestedByUser?: boolean;
+  musicMetadata?: {
+    resultType: "SONG";
+    artists: string[];
+    album: string | null;
+    popularityScore?: number;
+    discoveryPath?: "SEARCH" | "ALBUM";
+  };
 };
 
 export type PreparedYouTubeSource = YouTubeSource & {
@@ -94,6 +106,8 @@ export type PreparedYouTubeSource = YouTubeSource & {
 };
 
 export type SourceRequestScope = "user" | "playback";
+
+export type MediaControlCommand = "TOGGLE_PLAYBACK" | "NEXT" | "BACK";
 
 export type SupportedLocale = "es" | "en";
 
@@ -178,6 +192,8 @@ export type DesktopApi = {
   };
   runtime: {
     setAudioActive(active: boolean): Promise<void>;
+    setMediaControlsActive(active: boolean): Promise<void>;
+    onMediaControl(listener: (command: MediaControlCommand) => void): () => void;
   };
   djs: {
     list(): Promise<DjProfile[]>;
@@ -206,6 +222,7 @@ export type DesktopApi = {
   sources: {
     search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;
     searchMany(queries: string[], limitPerQuery: number, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
+    searchMusicMany(queries: string[], limitPerQuery: number, popularityLevel: PopularityLevel, scope?: SourceRequestScope): Promise<YouTubeSource[][]>;
     inspect(url: string, scope?: SourceRequestScope): Promise<YouTubeSource>;
     prepare(source: YouTubeSource, scope?: SourceRequestScope): Promise<PreparedYouTubeSource>;
     read(leaseId: string): Promise<Uint8Array>;

@@ -133,7 +133,16 @@ una repetición prohibida.
 Valores iniciales recomendados, configurables por DJ:
 
 - misma pista: no repetir durante la sesión;
-- mismo artista principal: separación mínima de 45 minutos;
+- selección autónoma: máximo dos pistas del mismo artista principal dentro de
+  cualquier ventana deslizante de diez posiciones de la cola;
+- la ventana continúa entre rondas y rellenos: solicitar otro lote no reinicia
+  el conteo del artista;
+- el artista puede volver cuando sus apariciones anteriores hayan salido de la
+  ventana de diez posiciones;
+- al restaurar una sesión antigua se conserva la pista actual y el historial,
+  se eliminan únicamente los excesos automáticos de la cola futura y se rellena
+  de nuevo hasta el objetivo;
+- una petición explícita del usuario es un override intencional de diversidad;
 - artista invitado: no cuenta como repetición si no es protagonista;
 - máximo dos pistas consecutivas del mismo subgénero muy específico;
 - al menos una pista fuera del conjunto más obvio cada 30 minutos cuando la

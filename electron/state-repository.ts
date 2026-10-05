@@ -153,7 +153,21 @@ function isYouTubeSource(value: unknown): value is YouTubeSource {
     && typeof value.creator === "string"
     && typeof value.durationSeconds === "number"
     && Number.isFinite(value.durationSeconds)
-    && (value.thumbnailUrl === null || typeof value.thumbnailUrl === "string");
+    && (value.thumbnailUrl === null || typeof value.thumbnailUrl === "string")
+    && (value.catalog === undefined || value.catalog === "YOUTUBE" || value.catalog === "YOUTUBE_MUSIC")
+    && (value.requestedByUser === undefined || typeof value.requestedByUser === "boolean")
+    && (value.musicMetadata === undefined || isMusicMetadata(value.musicMetadata));
+}
+
+function isMusicMetadata(value: unknown): boolean {
+  return isRecord(value)
+    && value.resultType === "SONG"
+    && Array.isArray(value.artists)
+    && value.artists.length > 0
+    && value.artists.every((artist) => typeof artist === "string" && Boolean(artist.trim()))
+    && (value.album === null || typeof value.album === "string")
+    && (value.popularityScore === undefined || (typeof value.popularityScore === "number" && value.popularityScore >= 0 && value.popularityScore <= 1))
+    && (value.discoveryPath === undefined || value.discoveryPath === "SEARCH" || value.discoveryPath === "ALBUM");
 }
 
 function isTimestamp(value: unknown): value is string {

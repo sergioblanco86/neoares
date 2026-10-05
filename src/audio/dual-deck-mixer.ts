@@ -107,6 +107,12 @@ export class DualDeckMixer {
     if (this.#context?.state === "suspended") await this.#context.resume();
   }
 
+  activateImmediately(from: DeckSlot, to: DeckSlot, offsetSeconds = 0): void {
+    const context = this.#ensureContext();
+    this.#stop(from);
+    this.#start(to, 1, context.currentTime, offsetSeconds);
+  }
+
   seek(slot: DeckSlot, positionSeconds: number): void {
     const deck = this.#decks[slot];
     if (!deck.buffer) return;

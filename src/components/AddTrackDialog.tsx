@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, ListEnd, ListStart, LoaderCircle, Music2, Plus, Search, X } from "lucide-react";
+import { Check, ListEnd, ListStart, LoaderCircle, Plus, Search, X } from "lucide-react";
 import type { QueuePlacement } from "../domain/queue-operations";
 import { displayCreator, displayTitle } from "../i18n/content";
 import { readableError } from "../i18n/errors";
 import { useI18n } from "../i18n/i18n";
 import type { YouTubeSource } from "../shared/contracts";
+import { TrackArtwork } from "./TrackArtwork";
 
 type AddTrackDialogProps = {
   existingIds: Set<string>;
@@ -89,9 +90,7 @@ export function AddTrackDialog({ existingIds, open, onAdd, onClose }: AddTrackDi
             const isPending = pendingIds.has(track.id);
             return (
               <article className="track-search-result" key={track.id}>
-                <div className="track-thumbnail">
-                  {track.thumbnailUrl ? <img alt="" loading="lazy" referrerPolicy="no-referrer" src={track.thumbnailUrl} /> : <Music2 size={18} />}
-                </div>
+                <TrackArtwork className="track-thumbnail" track={track} />
                 <div><strong>{displayTitle(track.title, t)}</strong><span>{displayCreator(track.creator, t)} · {formatDuration(track.durationSeconds)}</span></div>
                 <button className="secondary-button" disabled={alreadyAdded || isPending} onClick={() => void add(track)} type="button">
                   {alreadyAdded ? <><Check size={14} /> {t("search.inQueue")}</> : isPending ? <><LoaderCircle className="spin" size={14} /> {t("search.adding")}</> : <><Plus size={14} /> {t("common.add")}</>}

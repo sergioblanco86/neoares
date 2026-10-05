@@ -2,6 +2,7 @@ import type { DjProfile, YouTubeSource } from "../shared/contracts";
 
 export type DjSearchPlan = {
   queries: string[];
+  musicQueries: string[];
   artistNames: string[];
   excludedTerms: string[];
 };
@@ -12,7 +13,7 @@ export type MusicAssessment = {
   contentType: "MUSIC" | "LIVE_MUSIC" | "SPOKEN_CONTENT" | "UNKNOWN";
   positiveReasons: string[];
   negativeReasons: string[];
-  assessmentVersion: "music-title-v1";
+  assessmentVersion: "music-candidate-v2";
 };
 
 const SPOKEN_CONTENT_TERMS = [
@@ -21,11 +22,22 @@ const SPOKEN_CONTENT_TERMS = [
   "making of", "reaction", "reaccion", "review", "resena", "historia de",
   "the story of", "explained", "explicado", "analysis", "analisis", "tutorial",
   "news", "noticias", "record update", "album update", "preguntas y respuestas", "q and a",
+  "vlog", "webisode", "in the studio", "studio diary", "tour diary", "short film",
+];
+
+const NON_SONG_VARIANT_TERMS = [
+  "official trailer", "album trailer", "movie trailer", "film trailer", "documentary trailer", "teaser trailer",
+  "vocals only", "vocal only", "isolated vocals", "isolated vocal", "a cappella", "acapella",
+  "guitar only", "isolated guitar", "drums only", "drum only", "isolated drums",
+  "bass only", "isolated bass", "piano only", "isolated piano", "no backing track",
+  "backing track", "karaoke", "multitrack", "multi track", "stems only", "vocal track only",
+  "guitar cover", "drum cover", "bass cover", "vocal cover", "cover by",
+  "guitar tab", "bass tab", "drum cam", "guitar lesson", "drum lesson", "playthrough",
 ];
 
 const MUSIC_EVIDENCE_TERMS = [
   "official audio", "audio oficial", "official video", "video oficial", "official music video",
-  "music video", "lyric video", "lyrics", "letra", "studio recording", "full song",
+  "music video", "lyric video", "lyrics", "letra", "full song",
 ];
 
 const GENRE_ARTISTS: Record<string, string[]> = {
@@ -55,7 +67,7 @@ const GENRE_EXCLUSIONS: Record<string, string[]> = {
   "hardcore punk": ["hardcore techno", "hardstyle", "gabber", "edm"],
 };
 
-const MODIFIERS = ["official audio song", "official video", "studio recording", "full song"];
+const MODIFIERS = ["official audio song", "official music video", "lyric video", "full song"];
 
 export function buildDjSearchPlan(dj: DjProfile, round: number): DjSearchPlan {
   const normalizedGenres = dj.intent.genres.map(normalizeSearchText);
@@ -74,14 +86,19 @@ export function buildDjSearchPlan(dj: DjProfile, round: number): DjSearchPlan {
   const relatedBatch = rotate(relatedArtists, round * 5).slice(0, Math.max(0, 5 - explicitBatch.length));
   const queryArtists = unique([...explicitBatch, ...relatedBatch, ...rotate(explicitArtists, round * 5)]).slice(0, 5);
   const eraQuery = buildEraQuery(dj, round);
+  const musicEraQuery = buildEraYearQuery(dj, round);
 
   const queries = queryArtists.length
     ? queryArtists.map((artist) => `"${artist}" ${eraQuery} ${modifier}`.replace(/\s+/g, " ").trim())
     : dj.intent.genres.slice(0, 5).map((genre) => `"${genre}" ${eraQuery} ${modifier} -mix -playlist`.replace(/\s+/g, " ").trim());
+  const musicQueries = queryArtists.length
+    ? queryArtists.map((artist) => `${artist} ${musicEraQuery}`.replace(/\s+/g, " ").trim())
+    : dj.intent.genres.slice(0, 5).map((genre) => `${genre} ${musicEraQuery}`.replace(/\s+/g, " ").trim());
 
   const genreExclusions = normalizedGenres.flatMap((genre) => GENRE_EXCLUSIONS[genre] ?? []);
   return {
     queries,
+    musicQueries,
     artistNames,
     excludedTerms: unique([...dj.exclusions.artists, ...dj.exclusions.terms, ...genreExclusions, "mix", "playlist", "full album", "álbum completo", "album completo", "reaction", "reacción", "tutorial"]),
   };
@@ -94,7 +111,7 @@ export function isSearchCandidateAllowed(dj: DjProfile, source: YouTubeSource, p
   const validDuration = source.durationSeconds >= dj.curation.minDurationSeconds
     && source.durationSeconds <= dj.curation.maxDurationSeconds;
   if (!validDuration) return false;
-  if (plan.excludedTerms.some((term) => searchable.includes(normalizeSearchText(term)))) return false;
+  if (plan.excludedTerms.some((term) => containsPhrase(searchable, normalizeSearchText(term)))) return false;
   if (!assessMusicCandidate(source).allowed) return false;
 
   if (plan.artistNames.length > 0) {
@@ -107,9 +124,26 @@ export function assessMusicCandidate(source: YouTubeSource): MusicAssessment {
   const title = normalizeSearchText(source.title);
   const creator = normalizeSearchText(source.creator);
   const searchable = `${title} ${creator}`;
-  const negativeReasons = SPOKEN_CONTENT_TERMS
+  if (source.requestedByUser === true) {
+    return {
+      allowed: true,
+      confidence: "HIGH",
+      contentType: "UNKNOWN",
+      positiveReasons: ["explicit-user-selection"],
+      negativeReasons: [],
+      assessmentVersion: "music-candidate-v2",
+    };
+  }
+
+  const negativeReasons = [
+    ...SPOKEN_CONTENT_TERMS
     .filter((term) => containsPhrase(searchable, normalizeSearchText(term)))
-    .map((term) => `spoken-term:${normalizeSearchText(term)}`);
+    .map((term) => `spoken-term:${normalizeSearchText(term)}`),
+    ...NON_SONG_VARIANT_TERMS
+      .filter((term) => containsPhrase(title, normalizeSearchText(term)))
+      .map((term) => `non-song-variant:${normalizeSearchText(term)}`),
+    ...(containsNumberedTrailer(title) ? ["non-song-variant:numbered-trailer"] : []),
+  ];
   if (negativeReasons.length > 0) {
     return {
       allowed: false,
@@ -117,33 +151,59 @@ export function assessMusicCandidate(source: YouTubeSource): MusicAssessment {
       contentType: "SPOKEN_CONTENT",
       positiveReasons: [],
       negativeReasons,
-      assessmentVersion: "music-title-v1",
+      assessmentVersion: "music-candidate-v2",
+    };
+  }
+
+  if (source.catalog === "YOUTUBE_MUSIC"
+    && source.musicMetadata?.resultType === "SONG"
+    && source.musicMetadata.artists.length > 0) {
+    return {
+      allowed: true,
+      confidence: "HIGH",
+      contentType: "MUSIC",
+      positiveReasons: ["youtube-music-song", ...(source.musicMetadata.album ? ["album-metadata"] : [])],
+      negativeReasons: [],
+      assessmentVersion: "music-candidate-v2",
     };
   }
 
   const positiveReasons: string[] = [];
+  const strongReasons: string[] = [];
   for (const term of MUSIC_EVIDENCE_TERMS) {
-    if (containsPhrase(searchable, normalizeSearchText(term))) positiveReasons.push(`music-term:${normalizeSearchText(term)}`);
+    if (containsPhrase(searchable, normalizeSearchText(term))) {
+      const reason = `music-term:${normalizeSearchText(term)}`;
+      positiveReasons.push(reason);
+      strongReasons.push(reason);
+    }
   }
   if (/\s[-–—:]\s/.test(source.title)) positiveReasons.push("artist-title-pattern");
-  if (/\btopic\b/.test(creator)) positiveReasons.push("topic-channel");
+  if (/\btopic\b/.test(creator)) {
+    positiveReasons.push("topic-channel");
+    strongReasons.push("topic-channel");
+  }
+  const titleArtist = extractTitleArtist(source.title);
+  if (titleArtist !== null && isLikelySameArtist(titleArtist, creator)) {
+    positiveReasons.push("artist-channel-match");
+    strongReasons.push("artist-channel-match");
+  }
   if (containsPhrase(title, "live") || containsPhrase(title, "en vivo")) {
     return {
-      allowed: true,
-      confidence: positiveReasons.length > 0 ? "HIGH" : "MEDIUM",
+      allowed: positiveReasons.length > 0,
+      confidence: positiveReasons.length > 0 ? "HIGH" : "LOW",
       contentType: "LIVE_MUSIC",
       positiveReasons,
       negativeReasons: [],
-      assessmentVersion: "music-title-v1",
+      assessmentVersion: "music-candidate-v2",
     };
   }
   return {
-    allowed: true,
-    confidence: positiveReasons.length > 0 ? "HIGH" : "MEDIUM",
-    contentType: positiveReasons.length > 0 ? "MUSIC" : "UNKNOWN",
+    allowed: strongReasons.length > 0,
+    confidence: strongReasons.length > 0 ? "HIGH" : "LOW",
+    contentType: strongReasons.length > 0 ? "MUSIC" : "UNKNOWN",
     positiveReasons,
-    negativeReasons: [],
-    assessmentVersion: "music-title-v1",
+    negativeReasons: strongReasons.length > 0 ? [] : ["insufficient-music-evidence"],
+    assessmentVersion: "music-candidate-v2",
   };
 }
 
@@ -206,6 +266,16 @@ function buildEraQuery(dj: DjProfile, round: number): string {
   return [era.label, selectedYear].filter(Boolean).join(" ");
 }
 
+function buildEraYearQuery(dj: DjProfile, round: number): string {
+  const era = dj.intent.era;
+  if (!era) return "";
+  if (era.startYear !== null && era.endYear !== null) {
+    const span = Math.max(1, era.endYear - era.startYear + 1);
+    return String(era.startYear + (round % span));
+  }
+  return String(era.startYear ?? era.endYear ?? "");
+}
+
 function extractTitleArtist(title: string): string | null {
   const match = title.match(/^(.+?)(?:\s+[-–—]\s+|:\s+)/);
   return match ? normalizeSearchText(match[1]) : null;
@@ -220,6 +290,10 @@ function isLikelySameArtist(left: string, right: string): boolean {
 
 function containsPhrase(searchable: string, phrase: string): boolean {
   return ` ${searchable} `.includes(` ${phrase} `);
+}
+
+function containsNumberedTrailer(title: string): boolean {
+  return /\btrailer\s+(?:number\s+)?\d+\b/.test(title);
 }
 
 function jaroWinkler(left: string, right: string): number {

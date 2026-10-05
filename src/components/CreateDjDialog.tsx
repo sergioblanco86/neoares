@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { createDefaultDj } from "../domain/default-djs";
 import { useI18n } from "../i18n/i18n";
-import type { DjProfile } from "../shared/contracts";
+import type { DjProfile, PopularityLevel } from "../shared/contracts";
 
 type CreateDjDialogProps = {
   initialProfile: DjProfile | null;
@@ -21,6 +21,7 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
   const [eraLabel, setEraLabel] = useState("");
   const [startYear, setStartYear] = useState("");
   const [endYear, setEndYear] = useState("");
+  const [popularityLevel, setPopularityLevel] = useState<PopularityLevel>(3);
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
     setEraLabel(initialProfile?.intent.era?.label ?? "");
     setStartYear(initialProfile?.intent.era?.startYear?.toString() ?? "");
     setEndYear(initialProfile?.intent.era?.endYear?.toString() ?? "");
+    setPopularityLevel(initialProfile?.curation.popularityLevel ?? 3);
     setFormError(null);
   }, [initialProfile, open]);
 
@@ -76,6 +78,10 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
             artists: artistList.map((artistName) => ({ name: artistName, youtubeChannelId: null })),
             searchTerms: genreList,
           },
+          curation: {
+            ...initialProfile.curation,
+            popularityLevel,
+          },
         } satisfies DjProfile
       : createDefaultDj({
           name: name.trim(),
@@ -84,6 +90,7 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
           genres: genreList,
           artists: artistList,
           era,
+          popularityLevel,
         });
 
     await onSave({ ...profile, createdAt: initialProfile?.createdAt ?? timestamp, updatedAt: timestamp });
@@ -144,6 +151,25 @@ export function CreateDjDialog({ initialProfile, open, saving, onClose, onSave }
             <small>{t("djEditor.eraHint")}</small>
           </fieldset>
 
+          <fieldset className="popularity-fieldset">
+            <legend>{t("djEditor.popularity")}</legend>
+            <div className="popularity-control">
+              <input
+                aria-label={t("djEditor.popularity")}
+                aria-valuetext={`${popularityLevel} · ${popularityLabel(popularityLevel, t)}`}
+                max={5}
+                min={1}
+                onChange={(event) => setPopularityLevel(Number(event.target.value) as PopularityLevel)}
+                step={1}
+                type="range"
+                value={popularityLevel}
+              />
+              <output>{popularityLevel} · {popularityLabel(popularityLevel, t)}</output>
+            </div>
+            <div aria-hidden="true" className="popularity-marks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+            <small>{t("djEditor.popularityHint")}</small>
+          </fieldset>
+
           {formError ? <div className="form-error" role="alert">{formError}</div> : null}
 
           <div className="dialog-actions">
@@ -164,4 +190,12 @@ function parseYear(value: string): number | null {
   if (!value.trim()) return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : null;
+}
+
+function popularityLabel(level: PopularityLevel, t: ReturnType<typeof useI18n>["t"]): string {
+  if (level === 1) return t("djEditor.popularityLevel1");
+  if (level === 2) return t("djEditor.popularityLevel2");
+  if (level === 4) return t("djEditor.popularityLevel4");
+  if (level === 5) return t("djEditor.popularityLevel5");
+  return t("djEditor.popularityLevel3");
 }
