@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, ArrowUpToLine, GripVertical, ListPlus, MoreHorizont
 import { displayCreator, displayTitle } from "../i18n/content";
 import { useI18n } from "../i18n/i18n";
 import type { YouTubeSource } from "../shared/contracts";
+import { TrackArtwork } from "./TrackArtwork";
 
 type UpcomingQueueProps = {
   addDisabled: boolean;
@@ -68,6 +69,7 @@ export function UpcomingQueue({ addDisabled, busyLabel, disabled, nextReady, tra
               }}
             >
               <span className="queue-position" title={t("queue.dragToReorder")}><GripVertical size={13} />{String(index + 1).padStart(2, "0")}</span>
+              <TrackArtwork className="queue-track-artwork" track={track} />
               <div className="queue-track-copy"><strong>{displayTitle(track.title, t)}</strong><small>{displayCreator(track.creator, t)}</small></div>
               <em>{index === 0 ? nextReady ? t("queue.ready") : t("queue.preparing") : t("queue.queued")}</em>
               <div className="queue-menu-wrap">

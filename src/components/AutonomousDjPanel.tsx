@@ -12,6 +12,7 @@ import { useI18n } from "../i18n/i18n";
 import type { TranslationKey } from "../i18n/locales/es";
 import type { DjProfile, PreparedYouTubeSource, RestorableSessionPhase, SessionSnapshot, YouTubeSource } from "../shared/contracts";
 import { AddTrackDialog } from "./AddTrackDialog";
+import { TrackArtwork } from "./TrackArtwork";
 import { UpcomingQueue } from "./UpcomingQueue";
 
 type SessionPhase = "IDLE" | "RESTORABLE" | "DISCOVERING" | "PREPARING" | "PLAYING" | "PAUSED" | "TRANSITIONING" | "RECOVERING" | "ERROR";
@@ -819,7 +820,8 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
           <div className="now-playing-label"><Radio size={15} /><span>{phase === "RESTORABLE" ? t("session.saved") : phase === "RECOVERING" ? t("session.recoveringContinuity") : audible ? phase === "PAUSED" ? t("session.paused") : t("session.nowPlaying") : busy ? t("session.preparingFirst") : t("session.stopped")}</span></div>
           {current ? (
             <div className="now-track">
-              <div><strong>{displayTitle(current.title, t)}</strong><span>{displayCreator(current.creator, t)}</span></div>
+              <TrackArtwork className="now-track-artwork" track={current} />
+              <div className="now-track-copy"><strong>{displayTitle(current.title, t)}</strong><span>{displayCreator(current.creator, t)}</span></div>
               <time>{player.bpm ? `${player.bpm} BPM` : formatDuration(current.durationSeconds)}</time>
             </div>
           ) : (
