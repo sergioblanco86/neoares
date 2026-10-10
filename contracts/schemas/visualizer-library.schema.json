@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/visualizer-library.schema.json",
+  "title": "VisualizerPresetLibrary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updatedAt", "presets"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "presets": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "visualizer-preset.schema.json" }
+    }
+  }
+}

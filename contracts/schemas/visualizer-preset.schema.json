@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/visualizer-preset.schema.json",
+  "title": "VisualizerPresetDescriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "author", "kind", "bundled", "sourceKey", "tags", "favorite", "origin", "checksum", "compatibility", "importedAt"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "author": { "type": ["string", "null"], "maxLength": 200 },
+    "kind": { "enum": ["milkdrop", "native"] },
+    "bundled": { "type": "boolean" },
+    "origin": { "enum": ["bundled", "imported"] },
+    "sourceKey": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "favorite": { "type": "boolean" },
+    "checksum": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "compatibility": { "enum": ["ready", "incompatible", "failed"] },
+    "compatibilityError": { "type": "string", "maxLength": 1000 },
+    "importedAt": { "type": ["string", "null"], "format": "date-time" },
+    "tags": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "minLength": 1,
+        "maxLength": 50
+      }
+    }
+  }
+}

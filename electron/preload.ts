@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "./channels";
-import type { AppState, CacheCleanupResult, CachePolicy, CacheStats, DesktopApi, DjProfile, LoudnessAnalysis, MediaControlCommand, PreparedYouTubeSource, SessionSnapshot, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
+import type { AppState, CacheCleanupResult, CachePolicy, CacheStats, DesktopApi, DjProfile, LoudnessAnalysis, MediaControlCommand, PreparedYouTubeSource, SessionSnapshot, SupportedLocale, VisualizerImportResult, VisualizerPresentation, VisualizerPresetDescriptor, VisualizerPresetImportRequest, VisualizerSettings, YouTubeSource } from "../src/shared/contracts";
 
 const api: DesktopApi = {
   platform: process.platform,
@@ -12,6 +12,12 @@ const api: DesktopApi = {
     check: () => ipcRenderer.invoke(IPC_CHANNELS.checkConnectivity) as Promise<boolean>,
   },
   runtime: {
+    getWindowVisibility: () => ipcRenderer.invoke(IPC_CHANNELS.getWindowVisibility) as Promise<boolean>,
+    onWindowVisibility: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, visible: boolean) => { if (typeof visible === "boolean") listener(visible); };
+      ipcRenderer.on(IPC_CHANNELS.windowVisibility, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.windowVisibility, handler);
+    },
     setAudioActive: (active) => ipcRenderer.invoke(IPC_CHANNELS.setAudioActive, active) as Promise<void>,
     setMediaControlsActive: (active) => ipcRenderer.invoke(IPC_CHANNELS.setMediaControlsActive, active) as Promise<void>,
     onMediaControl: (listener) => {
@@ -43,6 +49,18 @@ const api: DesktopApi = {
     protect: (sourceIds) => ipcRenderer.invoke(IPC_CHANNELS.protectCacheSources, sourceIds) as Promise<void>,
     getLoudness: (sourceId) => ipcRenderer.invoke(IPC_CHANNELS.getCachedLoudness, sourceId) as Promise<LoudnessAnalysis | null>,
     saveLoudness: (sourceId, analysis) => ipcRenderer.invoke(IPC_CHANNELS.saveCachedLoudness, sourceId, analysis) as Promise<void>,
+  },
+  visualizer: {
+    retryImportedPreset: (id) => ipcRenderer.invoke(IPC_CHANNELS.retryVisualizerPreset, id),
+    loadSettings: () => ipcRenderer.invoke(IPC_CHANNELS.loadVisualizerSettings) as Promise<VisualizerSettings>,
+    saveSettings: (settings) => ipcRenderer.invoke(IPC_CHANNELS.saveVisualizerSettings, settings) as Promise<void>,
+    loadPresentation: () => ipcRenderer.invoke(IPC_CHANNELS.loadVisualizerPresentation) as Promise<VisualizerPresentation>,
+    savePresentation: (presentation) => ipcRenderer.invoke(IPC_CHANNELS.saveVisualizerPresentation, presentation) as Promise<void>,
+    listPresets: () => ipcRenderer.invoke(IPC_CHANNELS.listVisualizerPresets) as Promise<VisualizerPresetDescriptor[]>,
+    loadPresetDefinition: (id) => ipcRenderer.invoke(IPC_CHANNELS.loadVisualizerPresetDefinition, id) as Promise<unknown>,
+    importPresets: (request: VisualizerPresetImportRequest) => ipcRenderer.invoke(IPC_CHANNELS.importVisualizerPresets, request) as Promise<VisualizerImportResult>,
+    removeImportedPreset: (id) => ipcRenderer.invoke(IPC_CHANNELS.removeVisualizerPreset, id) as Promise<void>,
+    setFavorite: (id, favorite) => ipcRenderer.invoke(IPC_CHANNELS.setVisualizerPresetFavorite, id, favorite) as Promise<void>,
   },
   sources: {
     search: (query, limit, scope) => ipcRenderer.invoke(IPC_CHANNELS.searchSources, query, limit, scope) as Promise<YouTubeSource[]>,

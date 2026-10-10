@@ -19,13 +19,19 @@
     "package:all": "pnpm build && bash scripts/package-macos.sh && bash scripts/package-windows.sh",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "verify:visualizer": "electron scripts/verify-visualizer.cjs",
+    "verify:visualizer-ui": "cross-env VISUALIZER_UI_TEST=1 electron scripts/verify-visualizer.cjs",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "start": "pnpm build && electron ."
   },
   "dependencies": {
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "butterchurn": "3.0.0-beta.5",
+    "butterchurn-presets": "3.0.0-beta.4",
     "lucide-react": "1.47.0",
+    "milkdrop-preset-converter": "0.1.2",
+    "milkdrop-preset-utils": "0.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "youtubei.js": "18.0.0"

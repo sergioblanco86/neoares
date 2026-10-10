@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/visualizer-presentation.schema.json",
+  "title": "VisualizerPresentation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "x", "y", "width", "height", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "x": { "type": "number", "minimum": -10000, "maximum": 10000 },
+    "y": { "type": "number", "minimum": -10000, "maximum": 10000 },
+    "width": { "type": "number", "minimum": 460, "maximum": 1920 },
+    "height": { "type": "number", "minimum": 300, "maximum": 1200 },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+  }
+}

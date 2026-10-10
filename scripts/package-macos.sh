@@ -22,6 +22,7 @@ cleanup
 mkdir -p "$stage_dir/.tools"
 
 cp "$project_dir/package.json" "$stage_dir/package.json"
+cp "$project_dir/THIRD_PARTY_NOTICES.md" "$stage_dir/THIRD_PARTY_NOTICES.md"
 cp -R "$project_dir/dist" "$stage_dir/dist"
 cp -R "$project_dir/dist-electron" "$stage_dir/dist-electron"
 cp "$project_dir/.tools/macos/yt-dlp" "$stage_dir/.tools/yt-dlp"

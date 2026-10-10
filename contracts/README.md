@@ -16,11 +16,15 @@ lenguaje de implementación.
 - [`transition-plan.schema.json`](schemas/transition-plan.schema.json)
 - [`session-event.schema.json`](schemas/session-event.schema.json)
 - [`manifest.schema.json`](schemas/manifest.schema.json)
+- [`visualizer-settings.schema.json`](schemas/visualizer-settings.schema.json)
+- [`visualizer-preset.schema.json`](schemas/visualizer-preset.schema.json)
+- [`visualizer-library.schema.json`](schemas/visualizer-library.schema.json)
 - [`common.schema.json`](schemas/common.schema.json)
 - [Contratos de puertos](PORTS.md)
 - [Catálogo de eventos](EVENTS.md)
 - [Máquinas de estado](STATE_MACHINES.md)
 - [Continuidad de sesión](SESSION_CONTINUITY.md)
+- [Audio Reactive Visualizer](VISUALIZER.md)
 
 El conjunto de requisitos aprobado para la siguiente implementación está en
 [`docs/IMPLEMENTATION_CONTRACTS.md`](../docs/IMPLEMENTATION_CONTRACTS.md).

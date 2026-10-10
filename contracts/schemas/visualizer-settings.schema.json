@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtubeshuffle.local/schemas/visualizer-settings.schema.json",
+  "title": "VisualizerSettings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "enabled",
+    "presetId",
+    "autoChange",
+    "changeIntervalSeconds",
+    "locked",
+    "transitionsEnabled",
+    "transitionSeconds",
+    "quality",
+    "showTrackInfo",
+    "favoritePresetIds",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "enabled": { "type": "boolean", "default": true },
+    "presetId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "autoChange": { "type": "boolean", "default": true },
+    "changeIntervalSeconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 600,
+      "default": 25
+    },
+    "locked": { "type": "boolean", "default": false },
+    "transitionsEnabled": { "type": "boolean", "default": true },
+    "transitionSeconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 3
+    },
+    "quality": {
+      "enum": ["low", "medium", "high", "auto"],
+      "default": "auto"
+    },
+    "showTrackInfo": { "type": "boolean", "default": true },
+    "favoritePresetIds": {
+      "type": "array",
+      "maxItems": 10000,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 160 },
+      "default": []
+    },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+  }
+}

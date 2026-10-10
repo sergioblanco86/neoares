@@ -8,8 +8,9 @@ import { SourceService } from "./source-service";
 import { AppStateRepository, SessionRepository } from "./state-repository";
 import { MediaCache } from "./media-cache";
 import { MusicSourceService } from "./music-source-service";
+import { VisualizerPresentationRepository, VisualizerPresetLibrary, VisualizerSettingsRepository } from "./visualizer-repository";
 import { resolveLocale } from "../src/i18n/locale";
-import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, MediaControlCommand, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, YouTubeSource } from "../src/shared/contracts";
+import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, MediaControlCommand, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, VisualizerPresetImportRequest, VisualizerPresentation, VisualizerSettings, YouTubeSource } from "../src/shared/contracts";
 
 process.title = "NeoAres";
 app.name = "NeoAres";
@@ -40,7 +41,18 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  const createdWindow = mainWindow;
+  const reportVisibility = () => {
+    if (!createdWindow.isDestroyed()) createdWindow.webContents.send(IPC_CHANNELS.windowVisibility, createdWindow.isVisible() && !createdWindow.isMinimized());
+  };
+  createdWindow.on("show", reportVisibility);
+  createdWindow.on("hide", reportVisibility);
+  createdWindow.on("minimize", reportVisibility);
+  createdWindow.on("restore", reportVisibility);
+
+  mainWindow.once("ready-to-show", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+  });
 
   const developmentUrl = process.env.VITE_DEV_SERVER_URL;
   if (developmentUrl) {
@@ -163,6 +175,9 @@ if (!hasSingleInstanceLock) {
   const repository = new DjRepository(dataPath);
   const appStateRepository = new AppStateRepository(dataPath);
   const sessionRepository = new SessionRepository(dataPath);
+  const visualizerSettings = new VisualizerSettingsRepository(dataPath);
+  const visualizerPresentation = new VisualizerPresentationRepository(dataPath);
+  const visualizerLibrary = new VisualizerPresetLibrary(dataPath);
   const mediaCache = new MediaCache(userDataPath, [
     path.join(userDataPath, "cache", "sources"),
     path.join(legacyUserDataPath, "Cache", "sources"),
@@ -174,11 +189,13 @@ if (!hasSingleInstanceLock) {
   const musicSources = new MusicSourceService();
 
   const initialAppState = await appStateRepository.load();
-  configureApplicationMenu(resolveLocale(initialAppState.languagePreference, app.getPreferredSystemLanguages()));
+  let visualizerLocale = resolveLocale(initialAppState.languagePreference, app.getPreferredSystemLanguages());
+  configureApplicationMenu(visualizerLocale);
 
   ipcMain.handle(IPC_CHANNELS.getPreferredLanguages, () => app.getPreferredSystemLanguages());
   ipcMain.handle(IPC_CHANNELS.applyLocale, (_event, locale: SupportedLocale) => {
     if (locale !== "es" && locale !== "en") throw new Error("LOCALE_UNSUPPORTED");
+    visualizerLocale = locale;
     configureApplicationMenu(locale);
   });
   ipcMain.handle(IPC_CHANNELS.listDjs, () => repository.list());
@@ -203,7 +220,25 @@ if (!hasSingleInstanceLock) {
   ipcMain.handle(IPC_CHANNELS.protectCacheSources, (_event, sourceIds: string[]) => mediaCache.protect(sourceIds));
   ipcMain.handle(IPC_CHANNELS.getCachedLoudness, (_event, sourceId: string) => mediaCache.getLoudness(sourceId));
   ipcMain.handle(IPC_CHANNELS.saveCachedLoudness, (_event, sourceId: string, analysis: LoudnessAnalysis) => mediaCache.saveLoudness(sourceId, analysis));
+  ipcMain.handle(IPC_CHANNELS.loadVisualizerSettings, () => visualizerSettings.load());
+  ipcMain.handle(IPC_CHANNELS.saveVisualizerSettings, (_event, settings: VisualizerSettings) => visualizerSettings.save(settings));
+  ipcMain.handle(IPC_CHANNELS.loadVisualizerPresentation, () => visualizerPresentation.load());
+  ipcMain.handle(IPC_CHANNELS.saveVisualizerPresentation, (_event, presentation: VisualizerPresentation) => visualizerPresentation.save(presentation));
+  ipcMain.handle(IPC_CHANNELS.listVisualizerPresets, () => visualizerLibrary.list());
+  ipcMain.handle(IPC_CHANNELS.loadVisualizerPresetDefinition, (_event, id: string) => visualizerLibrary.loadDefinition(id));
+  ipcMain.handle(IPC_CHANNELS.importVisualizerPresets, (event, request: VisualizerPresetImportRequest) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("VISUALIZER_IMPORT_UNAVAILABLE");
+    if (request?.mode !== "files" && request?.mode !== "directory") throw new Error("VISUALIZER_IMPORT_INVALID_REQUEST");
+    return visualizerLibrary.importFromDialog(mainWindow, request, visualizerLocale);
+  });
+  ipcMain.handle(IPC_CHANNELS.removeVisualizerPreset, (_event, id: string) => visualizerLibrary.remove(id));
+  ipcMain.handle(IPC_CHANNELS.retryVisualizerPreset, (_event, id: string) => visualizerLibrary.retry(id));
+  ipcMain.handle(IPC_CHANNELS.setVisualizerPresetFavorite, (_event, id: string, favorite: boolean) => visualizerLibrary.setFavorite(id, favorite));
   ipcMain.handle(IPC_CHANNELS.checkConnectivity, () => hasInternetConnection());
+  ipcMain.handle(IPC_CHANNELS.getWindowVisibility, event => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    return Boolean(owner && owner.isVisible() && !owner.isMinimized());
+  });
   ipcMain.handle(IPC_CHANNELS.setAudioActive, (event, active: boolean) => {
     event.sender.setBackgroundThrottling(!(active === true));
   });
@@ -289,7 +324,10 @@ async function migrateLegacyProfiles(): Promise<void> {
 }
 
 app.on("second-instance", () => {
-  if (!mainWindow) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();

@@ -113,6 +113,56 @@ export type SupportedLocale = "es" | "en";
 
 export type LanguagePreference = "system" | SupportedLocale;
 
+export type VisualizerQuality = "auto" | "low" | "medium" | "high";
+
+export type VisualizerSettings = {
+  schemaVersion: 1;
+  enabled: boolean;
+  presetId: string | null;
+  autoChange: boolean;
+  changeIntervalSeconds: number;
+  locked: boolean;
+  transitionsEnabled: boolean;
+  transitionSeconds: number;
+  quality: VisualizerQuality;
+  showTrackInfo: boolean;
+  favoritePresetIds: string[];
+  updatedAt: string;
+};
+
+export type VisualizerPresetDescriptor = {
+  id: string;
+  name: string;
+  author: string | null;
+  kind: "milkdrop" | "native";
+  bundled: boolean;
+  sourceKey: string;
+  tags: string[];
+  favorite: boolean;
+  origin: "bundled" | "imported";
+  checksum: string | null;
+  compatibility: "ready" | "incompatible" | "failed";
+  compatibilityError?: string;
+  importedAt: string | null;
+};
+
+export type VisualizerPresetImportRequest = { mode: "files" | "directory" };
+
+export type VisualizerPresentation = {
+  schemaVersion: 1;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  updatedAt: string;
+};
+
+export type VisualizerImportResult = {
+  importedIds: string[];
+  skipped: Array<{ sourceName: string; reason: string }>;
+  incompatible: Array<{ sourceName: string; reason: string }>;
+};
+
 export type AppState = {
   schemaVersion: 2;
   lastSelectedDjId: string | null;
@@ -191,6 +241,8 @@ export type DesktopApi = {
     check(): Promise<boolean>;
   };
   runtime: {
+    getWindowVisibility(): Promise<boolean>;
+    onWindowVisibility(listener: (visible: boolean) => void): () => void;
     setAudioActive(active: boolean): Promise<void>;
     setMediaControlsActive(active: boolean): Promise<void>;
     onMediaControl(listener: (command: MediaControlCommand) => void): () => void;
@@ -218,6 +270,18 @@ export type DesktopApi = {
     protect(sourceIds: string[]): Promise<void>;
     getLoudness(sourceId: string): Promise<LoudnessAnalysis | null>;
     saveLoudness(sourceId: string, analysis: LoudnessAnalysis): Promise<void>;
+  };
+  visualizer: {
+    loadSettings(): Promise<VisualizerSettings>;
+    saveSettings(settings: VisualizerSettings): Promise<void>;
+    loadPresentation(): Promise<VisualizerPresentation>;
+    savePresentation(presentation: VisualizerPresentation): Promise<void>;
+    listPresets(): Promise<VisualizerPresetDescriptor[]>;
+    loadPresetDefinition(id: string): Promise<unknown>;
+    importPresets(request: VisualizerPresetImportRequest): Promise<VisualizerImportResult>;
+    removeImportedPreset(id: string): Promise<void>;
+    retryImportedPreset(id: string): Promise<VisualizerPresetDescriptor>;
+    setFavorite(id: string, favorite: boolean): Promise<void>;
   };
   sources: {
     search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;

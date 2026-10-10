@@ -41,6 +41,12 @@ export type TransitionReport = {
 
 export type TransitionPlan = Pick<TransitionReport, "mode" | "playbackRate" | "durationSeconds">;
 
+export type MixerAnalysisTap = {
+  context: AudioContext;
+  node: GainNode;
+  release(): void;
+};
+
 export function createTransitionPlan(_fromBpm: number, _toBpm: number, requestedDurationSeconds: number): TransitionPlan {
   return {
     mode: "CROSSFADE",
@@ -65,6 +71,7 @@ export class DualDeckMixer {
   #safety: GainNode | null = null;
   #limiter: DynamicsCompressorNode | null = null;
   #volume = 0.9;
+  readonly #analysisTaps = new Set<MixerAnalysisTap>();
   readonly #loadVersions: Record<DeckSlot, number> = { A: 0, B: 0 };
   readonly #transitionTimers = new Set<number>();
   readonly #decks: Record<DeckSlot, DeckRuntime> = {
@@ -130,6 +137,32 @@ export class DualDeckMixer {
 
   getVolume(): number {
     return this.#volume;
+  }
+
+  /**
+   * Creates an analyser branch after the master volume. The branch never alters
+   * the audible signal and is owned by the caller through `release`.
+   */
+  createPostMasterAnalysisTap(): MixerAnalysisTap {
+    const context = this.#ensureContext();
+    const master = this.#master!;
+    const node = context.createGain();
+    node.gain.value = 1;
+    master.connect(node);
+    let released = false;
+    const tap: MixerAnalysisTap = {
+      context,
+      node,
+      release: () => {
+        if (released) return;
+        released = true;
+        this.#analysisTaps.delete(tap);
+        master.disconnect(node);
+        node.disconnect();
+      },
+    };
+    this.#analysisTaps.add(tap);
+    return tap;
   }
 
   getPlayerSnapshot(slot: DeckSlot): PlayerSnapshot {
@@ -222,6 +255,7 @@ export class DualDeckMixer {
 
   async dispose(): Promise<void> {
     this.reset();
+    for (const tap of this.#analysisTaps) tap.release();
     await this.#context?.close();
     this.#context = null;
     this.#master = null;

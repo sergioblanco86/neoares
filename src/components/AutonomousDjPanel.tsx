@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, CircleCheck, LoaderCircle, Pause, Play, Radio, SkipBack, SkipForward, Square, Volume2, VolumeX, WandSparkles } from "lucide-react";
+import { AudioWaveform, CircleAlert, CircleCheck, LoaderCircle, Pause, Play, Radio, SkipBack, SkipForward, Square, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import { calculateCrossfadeDelay, DualDeckMixer, type BeatAnalysis, type DeckSlot, type PlayerSnapshot } from "../audio/dual-deck-mixer";
 import { canAppendAutonomousTrack, canReplaceWithAutonomousTrack, pruneUpcomingArtistDuplicates } from "../domain/artist-diversity";
 import { getUpcoming, insertUpcoming, removeUpcomingTrack, reorderUpcoming, replaceUpcomingTrack, setUpcoming, type QueuePlacement } from "../domain/queue-operations";
@@ -14,6 +14,8 @@ import type { DjProfile, PreparedYouTubeSource, RestorableSessionPhase, SessionS
 import { AddTrackDialog } from "./AddTrackDialog";
 import { TrackArtwork } from "./TrackArtwork";
 import { UpcomingQueue } from "./UpcomingQueue";
+import { VisualizerWindow } from "../visualizer/components/VisualizerWindow";
+import { VisualizerErrorBoundary } from "../visualizer/components/VisualizerErrorBoundary";
 
 type SessionPhase = "IDLE" | "RESTORABLE" | "DISCOVERING" | "PREPARING" | "PLAYING" | "PAUSED" | "TRANSITIONING" | "RECOVERING" | "ERROR";
 
@@ -44,6 +46,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   const [queueError, setQueueError] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [visualizerOpen, setVisualizerOpen] = useState(false);
   const [restorableSnapshot, setRestorableSnapshot] = useState<SessionSnapshot | null>(null);
   const queueRef = useRef<YouTubeSource[]>([]);
   const indexRef = useRef(0);
@@ -724,7 +727,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         shiftKey: event.shiftKey,
         repeat: event.repeat,
         editable: isEditableTarget(event.target),
-        modalOpen: document.querySelector('[role="dialog"]') !== null,
+        modalOpen: document.querySelector('[role="dialog"]:not(.visualizer-window)') !== null,
       });
       if (!command) return;
       event.preventDefault();
@@ -732,6 +735,16 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const onVisualizerShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== "v" || isEditableTarget(event.target) || document.querySelector('[role="dialog"]') !== null) return;
+      event.preventDefault();
+      setVisualizerOpen((value) => !value);
+    };
+    window.addEventListener("keydown", onVisualizerShortcut);
+    return () => window.removeEventListener("keydown", onVisualizerShortcut);
   }, []);
 
   useEffect(() => {
@@ -856,6 +869,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
               <button aria-label={volume === 0 ? t("player.unmute") : t("player.mute")} className="volume-button" onClick={() => changeVolume(volume === 0 ? 0.8 : 0)} type="button">{volume === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
               <input aria-label={t("player.volume")} max={1} min={0} onChange={(event) => changeVolume(Number(event.target.value))} step={0.01} type="range" value={volume} />
             </div>
+            <button aria-label={t("visualizer.open")} className="transport-button visualizer-toggle" onClick={() => setVisualizerOpen(true)} title={`${t("visualizer.title")} · V`} type="button"><AudioWaveform size={19} /></button>
           </div>
         </div>
 
@@ -884,6 +898,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         onClose={() => setSearchOpen(false)}
         open={searchOpen}
       />
+      <VisualizerErrorBoundary open={visualizerOpen} onClose={() => setVisualizerOpen(false)} failedLabel={t("visualizer.failed")} retryLabel={t("visualizer.retry")} closeLabel={t("visualizer.close")}><VisualizerWindow mixer={mixer} onClose={() => setVisualizerOpen(false)} open={visualizerOpen} track={current} playing={phase === "PLAYING" || phase === "TRANSITIONING" || phase === "RECOVERING"} positionSeconds={displayedPosition} durationSeconds={displayedDuration} /></VisualizerErrorBoundary>
     </>
   );
 

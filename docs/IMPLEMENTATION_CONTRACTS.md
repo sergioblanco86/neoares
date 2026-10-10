@@ -1,5 +1,9 @@
 # Contratos de implementación de NeoAres
 
+Los contratos específicos del Audio Reactive Visualizer se encuentran en
+[`contracts/VISUALIZER.md`](../contracts/VISUALIZER.md). Ese documento y sus
+JSON Schema prevalecen para el trabajo de la rama `feature/visualizer`.
+
 Estado: implementación base completada el 2026-09-22; pendiente de prueba
 prolongada y controles visuales de almacenamiento.
 
