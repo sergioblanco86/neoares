@@ -7,7 +7,7 @@ describe("post-master analysis tap", () => {
     const gains: Array<{ gain: { value: number }; connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
     const node = () => { const result = { gain: { value: 0 }, connect: vi.fn(), disconnect: vi.fn() }; result.connect.mockImplementation(destination => destination); return result; };
     const compressor = { ...node(), threshold: {}, knee: {}, ratio: {}, attack: {}, release: {} };
-    const context = { destination: {}, createGain: () => { const result = node(); gains.push(result); return result; }, createDynamicsCompressor: () => compressor, resume: vi.fn(), close: vi.fn() };
+    const context = { sampleRate: 48000, destination: {}, createGain: () => { const result = node(); gains.push(result); return result; }, createBiquadFilter: () => ({ ...node(), frequency: { value: 0 }, Q: { value: 0 }, getFrequencyResponse: (_frequencies: unknown, magnitude: Float32Array) => magnitude.fill(1) }), createDynamicsCompressor: () => compressor, resume: vi.fn(), close: vi.fn() };
     vi.stubGlobal("AudioContext", class { constructor() { return context; } });
     const mixer = new DualDeckMixer(), tap = mixer.createPostMasterAnalysisTap();
     expect(tap.context).toBe(context); expect(tap.node.gain.value).toBe(1);
@@ -16,7 +16,7 @@ describe("post-master analysis tap", () => {
     mixer.reset(); expect(gains[0].disconnect).not.toHaveBeenCalled();
     tap.release(); tap.release();
     expect(gains[0].disconnect).toHaveBeenCalledExactlyOnceWith(tap.node);
-    expect(gains[2].disconnect).toHaveBeenCalledOnce();
+    expect(gains[3].disconnect).toHaveBeenCalledOnce();
     const second = mixer.createPostMasterAnalysisTap(); await mixer.dispose(); second.release();
     expect(gains[0].disconnect).toHaveBeenCalledTimes(2); expect(context.close).toHaveBeenCalledOnce();
   });

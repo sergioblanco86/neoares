@@ -54,4 +54,15 @@ describe("ButterchurnRenderer", () => {
     await expect(renderer.loadPreset({ init_eqs_str: "evil()" }, 0)).rejects.toThrow("VISUALIZER_PRESET_REIMPORT_REQUIRED");
     renderer.render(); expect(instance.render).not.toHaveBeenCalled(); renderer.dispose();
   });
+
+  it("consumes external PCM without connecting or disconnecting another audio output", async () => {
+    const { instance, canvas } = setup();
+    const source = { context: {}, ready: Promise.resolve() } as unknown as import("./native/remote-audio").RemoteAudioSource;
+    const renderer = new ButterchurnRenderer(); await renderer.initialize(canvas, source);
+    await renderer.loadPreset(definition, 0);
+    const levels = { timeByteArray: new Uint8Array(1024), timeByteArrayL: new Uint8Array(1024), timeByteArrayR: new Uint8Array(1024) };
+    renderer.render(1 / 60, levels);
+    expect(instance.render).toHaveBeenCalledWith({ elapsedTime: 1 / 60, audioLevels: levels });
+    expect(instance.connectAudio).not.toHaveBeenCalled(); renderer.dispose(); expect(instance.disconnectAudio).not.toHaveBeenCalled();
+  });
 });

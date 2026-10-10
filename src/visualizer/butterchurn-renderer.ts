@@ -1,11 +1,13 @@
 import type { MixerAnalysisTap } from "../audio/dual-deck-mixer";
 import { PRESET_KEYS } from "./preset-catalog";
+import type { RemoteAudioSource } from "./native/remote-audio";
+import type { AudioLevels } from "../shared/native-visualizer";
 
 type ButterchurnInstance = {
   connectAudio(node: AudioNode): void;
   disconnectAudio(node: AudioNode): void;
   loadPreset(definition: unknown, blendSeconds: number): Promise<void>;
-  render(options?: { elapsedTime?: number }): void;
+  render(options?: { elapsedTime?: number; audioLevels?: AudioLevels }): void;
   setRendererSize(width: number, height: number): void;
   loseGLContext(): void;
   internalCanvas: HTMLCanvasElement | OffscreenCanvas;
@@ -22,15 +24,15 @@ export class ButterchurnRenderer {
   #loadChain: Promise<void> = Promise.resolve();
   #removeContextListeners: (() => void) | null = null;
 
-  async initialize(canvas: HTMLCanvasElement, tap: MixerAnalysisTap, onContextLost?: () => void, onContextRestored?: () => void): Promise<void> {
+  async initialize(canvas: HTMLCanvasElement, tap: MixerAnalysisTap | RemoteAudioSource, onContextLost?: () => void, onContextRestored?: () => void): Promise<void> {
+    if ("ready" in tap) await tap.ready;
     const module = await import("butterchurn") as unknown as { default?: ButterchurnFactory } & ButterchurnFactory;
     if (this.#disposed) return;
     const butterchurn = module.default ?? module;
     try {
       this.#instance = butterchurn.createVisualizer(tap.context, canvas, { width: canvas.width, height: canvas.height, onlyUseWASM: true });
     } catch (cause) { throw new Error("VISUALIZER_INITIALIZATION_FAILED", { cause }); }
-    this.#instance.connectAudio(tap.node);
-    this.#tap = tap;
+    if ("node" in tap) { this.#instance.connectAudio(tap.node); this.#tap = tap; }
     // v3 renders WebGL into an internal (usually OffscreenCanvas) surface.
     // The output canvas is 2D and never emits the engine's context events.
     const surface = this.#instance.internalCanvas;
@@ -63,7 +65,7 @@ export class ButterchurnRenderer {
     return next;
   }
 
-  render(elapsedTime?: number): void { if (this.#ready) this.#instance?.render({ elapsedTime }); }
+  render(elapsedTime?: number, audioLevels?: AudioLevels): void { if (this.#ready) this.#instance?.render({ elapsedTime, audioLevels }); }
   resize(width: number, height: number): void { this.#instance?.setRendererSize(width, height); }
   get maxTextureSize(): number {
     const gl = this.#instance?.gl;

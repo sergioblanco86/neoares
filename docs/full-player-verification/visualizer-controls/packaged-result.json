@@ -1,0 +1,107 @@
+{
+  "packaged": true,
+  "visualizerControlsOnly": true,
+  "checks": [
+    {
+      "name": "marketing block removed",
+      "passed": true
+    },
+    {
+      "name": "real session/mixer and four-track reserve",
+      "passed": true
+    },
+    {
+      "name": "Pin has distinct icon, surface, border, tooltip and accessible state",
+      "passed": true
+    },
+    {
+      "name": "Pin keeps controls visible after inactivity",
+      "passed": true
+    },
+    {
+      "name": "Lock has distinct icon, surface, tooltip and accessible state",
+      "passed": true
+    },
+    {
+      "name": "Lock state persists through real IPC and repository",
+      "passed": true
+    },
+    {
+      "name": "Keyboard shortcut also restores unlocked visual state",
+      "passed": true
+    },
+    {
+      "name": "Unpin restores control auto-hide",
+      "passed": true
+    },
+    {
+      "name": "Cancel file import does not produce a zero-result notice",
+      "passed": true
+    },
+    {
+      "name": "Cancel folder import does not produce a zero-result notice",
+      "passed": true
+    },
+    {
+      "name": "Both real import IPC modes reach the picker",
+      "passed": true
+    },
+    {
+      "name": "Successful real MilkDrop conversion displays imported count",
+      "passed": true
+    },
+    {
+      "name": "Imported preset is stored and playable in real library",
+      "passed": true
+    },
+    {
+      "name": "Success notice disappears without closing visualizer",
+      "passed": true
+    },
+    {
+      "name": "Duplicate import displays skipped count",
+      "passed": true
+    },
+    {
+      "name": "Repeated identical summary is displayed again",
+      "passed": true
+    },
+    {
+      "name": "Repeated summary restarts the full five-second lifetime",
+      "passed": true
+    },
+    {
+      "name": "Folder import reports incompatible file and reason",
+      "passed": true
+    },
+    {
+      "name": "Notice follows library close without duplication",
+      "passed": true
+    },
+    {
+      "name": "Incompatible notice also expires on canvas",
+      "passed": true
+    },
+    {
+      "name": "Actual picker rejection displays import failure",
+      "passed": true
+    },
+    {
+      "name": "Starting a cancelled import clears previous notice",
+      "passed": true
+    },
+    {
+      "name": "Failure notice disappears without reopening visualizer",
+      "passed": true
+    },
+    {
+      "name": "Owner playback remains active after controls and import checks",
+      "passed": true
+    },
+    {
+      "name": "no renderer errors",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

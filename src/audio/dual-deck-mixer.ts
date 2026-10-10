@@ -1,4 +1,6 @@
-import type { LoudnessAnalysis } from "../shared/contracts";
+import type { EqualizerSettings, LoudnessAnalysis } from "../shared/contracts";
+import { defaultEqualizerSettings } from "../shared/equalizer";
+import { EqualizerGraph } from "./equalizer";
 
 export type DeckSlot = "A" | "B";
 
@@ -47,6 +49,8 @@ export type MixerAnalysisTap = {
   release(): void;
 };
 
+export type PreparedDeckAudio = { buffer: AudioBuffer; analysis: BeatAnalysis; waveform: number[] };
+
 export function createTransitionPlan(_fromBpm: number, _toBpm: number, requestedDurationSeconds: number): TransitionPlan {
   return {
     mode: "CROSSFADE",
@@ -70,6 +74,9 @@ export class DualDeckMixer {
   #master: GainNode | null = null;
   #safety: GainNode | null = null;
   #limiter: DynamicsCompressorNode | null = null;
+  #equalizer: EqualizerGraph | null = null;
+  #equalizerSettings = defaultEqualizerSettings();
+  #fadingFrom: DeckSlot | null = null;
   #volume = 0.9;
   readonly #analysisTaps = new Set<MixerAnalysisTap>();
   readonly #loadVersions: Record<DeckSlot, number> = { A: 0, B: 0 };
@@ -86,18 +93,31 @@ export class DualDeckMixer {
   async load(slot: DeckSlot, bytes: Uint8Array, cachedLoudness?: LoudnessAnalysis | null): Promise<BeatAnalysis> {
     this.unload(slot);
     const loadVersion = this.#loadVersions[slot];
+    const prepared = await this.prepare(bytes, cachedLoudness);
+    if (loadVersion !== this.#loadVersions[slot]) throw new Error("DECK_LOAD_SUPERSEDED");
+    return this.loadPrepared(slot, prepared);
+  }
+
+  async prepare(bytes: Uint8Array, cachedLoudness?: LoudnessAnalysis | null): Promise<PreparedDeckAudio> {
     const context = this.#ensureContext();
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     const buffer = await context.decodeAudioData(copy.buffer);
-    if (loadVersion !== this.#loadVersions[slot]) {
-      throw new Error("DECK_LOAD_SUPERSEDED");
-    }
     const analysis = { ...analyzeBeatGrid(buffer), loudness: cachedLoudness ?? analyzeLoudness(buffer) };
-    this.#decks[slot].buffer = buffer;
-    this.#decks[slot].analysis = analysis;
-    this.#decks[slot].waveform = summarizeWaveform(buffer.getChannelData(0), 180);
-    return analysis;
+    return { buffer, analysis, waveform: summarizeWaveform(buffer.getChannelData(0), 180) };
+  }
+
+  loadPrepared(slot: DeckSlot, prepared: PreparedDeckAudio): BeatAnalysis {
+    this.unload(slot);
+    this.#decks[slot].buffer = prepared.buffer;
+    this.#decks[slot].analysis = prepared.analysis;
+    this.#decks[slot].waveform = prepared.waveform;
+    return prepared.analysis;
+  }
+
+  setEqualizer(settings: EqualizerSettings): void {
+    this.#equalizerSettings = structuredClone(settings);
+    this.#equalizer?.configure(settings);
   }
 
   async play(slot: DeckSlot, offsetSeconds = 0): Promise<void> {
@@ -220,8 +240,10 @@ export class DualDeckMixer {
     const timer = window.setTimeout(() => {
       this.#transitionTimers.delete(timer);
       this.#stop(from);
+      this.#fadingFrom = null;
     }, effectiveDuration * 1_000 + 50);
     this.#transitionTimers.add(timer);
+    this.#fadingFrom = from;
     return {
       mode: plan.mode,
       fromBpm: fromAnalysis.bpm,
@@ -234,7 +256,22 @@ export class DualDeckMixer {
   }
 
   stopAll(): void {
+    this.finishTransition();
     for (const slot of ["A", "B"] as const) this.#stop(slot);
+  }
+
+  /** Complete an interrupted fade before reusing its outgoing deck. */
+  finishTransition(): void {
+    for (const timer of this.#transitionTimers) window.clearTimeout(timer);
+    this.#transitionTimers.clear();
+    if (this.#fadingFrom) this.#stop(this.#fadingFrom);
+    this.#fadingFrom = null;
+    if (!this.#context) return;
+    for (const deck of Object.values(this.#decks)) {
+      if (!deck.gain) continue;
+      deck.gain.gain.cancelScheduledValues(this.#context.currentTime);
+      deck.gain.gain.setTargetAtTime(1, this.#context.currentTime, 0.015);
+    }
   }
 
   unload(slot: DeckSlot): void {
@@ -248,19 +285,21 @@ export class DualDeckMixer {
   }
 
   reset(): void {
-    for (const timer of this.#transitionTimers) window.clearTimeout(timer);
-    this.#transitionTimers.clear();
+    this.finishTransition();
     for (const slot of ["A", "B"] as const) this.unload(slot);
   }
 
   async dispose(): Promise<void> {
     this.reset();
     for (const tap of this.#analysisTaps) tap.release();
-    await this.#context?.close();
+    this.#equalizer?.dispose();
+    this.#equalizer = null;
+    const context = this.#context;
     this.#context = null;
     this.#master = null;
     this.#safety = null;
     this.#limiter = null;
+    await context?.close();
   }
 
   #ensureContext(): AudioContext {
@@ -277,6 +316,8 @@ export class DualDeckMixer {
       this.#limiter.attack.value = 0.003;
       this.#limiter.release.value = 0.1;
       this.#safety.connect(this.#limiter).connect(this.#master).connect(this.#context.destination);
+      this.#equalizer = new EqualizerGraph(this.#context, this.#safety);
+      this.#equalizer.configure(this.#equalizerSettings, true);
     }
     return this.#context;
   }
@@ -294,7 +335,7 @@ export class DualDeckMixer {
     source.playbackRate.value = 1;
     gain.gain.value = initialGain;
     normalization.gain.value = dbToLinear(deck.analysis?.loudness.recommendedGainDb ?? 0);
-    source.connect(normalization).connect(gain).connect(this.#safety!);
+    source.connect(normalization).connect(gain).connect(this.#equalizer!.input);
     const startAt = when ?? context.currentTime;
     source.start(startAt, Math.min(offsetSeconds, Math.max(0, deck.buffer.duration - 0.1)));
     source.addEventListener("ended", () => {

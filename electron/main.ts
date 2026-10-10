@@ -10,24 +10,47 @@ import { MediaCache } from "./media-cache";
 import { MusicSourceService } from "./music-source-service";
 import { VisualizerPresentationRepository, VisualizerPresetLibrary, VisualizerSettingsRepository } from "./visualizer-repository";
 import { resolveLocale } from "../src/i18n/locale";
+import { playbackRetention } from "../src/domain/playback-retention";
+import { EqualizerRepository } from "./equalizer-repository";
+import { NativeVisualizerHost } from "./native-visualizer";
+import type { EqualizerSettings } from "../src/shared/contracts";
 import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, MediaControlCommand, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, VisualizerPresetImportRequest, VisualizerPresentation, VisualizerSettings, YouTubeSource } from "../src/shared/contracts";
 
 process.title = "NeoAres";
 app.name = "NeoAres";
 
 let mainWindow: BrowserWindow | null = null;
+let nativeVisualizer: NativeVisualizerHost | null = null;
+const visualReadWriteChannels: Set<string> = new Set([
+  IPC_CHANNELS.getPreferredLanguages, IPC_CHANNELS.loadAppState, IPC_CHANNELS.getWindowVisibility,
+  IPC_CHANNELS.loadVisualizerSettings, IPC_CHANNELS.saveVisualizerSettings,
+  IPC_CHANNELS.loadVisualizerPresentation, IPC_CHANNELS.saveVisualizerPresentation,
+  IPC_CHANNELS.listVisualizerPresets, IPC_CHANNELS.loadVisualizerPresetDefinition,
+  IPC_CHANNELS.importVisualizerPresets, IPC_CHANNELS.removeVisualizerPreset,
+  IPC_CHANNELS.retryVisualizerPreset, IPC_CHANNELS.setVisualizerPresetFavorite,
+]);
+function registerHandler(channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    const owner = event.sender === mainWindow?.webContents;
+    const visual = event.sender === nativeVisualizer?.window?.webContents;
+    if (event.senderFrame !== event.sender.mainFrame || (!owner && !(visual && visualReadWriteChannels.has(channel)))) throw new Error("IPC_ROLE_DENIED");
+    return listener(event, ...args);
+  });
+}
+let activeSources: SourceService | null = null;
 const registeredMediaAccelerators = new Set<string>();
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const legacyUserDataPath = path.join(app.getPath("appData"), "youtubeshuffle");
 const neoAresUserDataPath = path.join(app.getPath("appData"), "NeoAres");
 app.setPath("userData", neoAresUserDataPath);
 
-function createWindow(): void {
+function createWindow(sources: SourceService): void {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
-    minWidth: 1040,
-    minHeight: 720,
+    minWidth: 360,
+    minHeight: 360,
+    useContentSize: true,
     title: "NeoAres",
     backgroundColor: "#101114",
     show: false,
@@ -42,6 +65,16 @@ function createWindow(): void {
   });
 
   const createdWindow = mainWindow;
+  const [outerWidth, outerHeight] = createdWindow.getSize();
+  const [contentWidth, contentHeight] = createdWindow.getContentSize();
+  createdWindow.setMinimumSize(360 + outerWidth - contentWidth, 360 + outerHeight - contentHeight);
+  createdWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  createdWindow.webContents.on("will-navigate", (event, url) => { if (url !== createdWindow.webContents.getURL()) event.preventDefault(); });
+  nativeVisualizer = new NativeVisualizerHost(createdWindow, path.join(app.getPath("userData"), "data"), path.join(__dirname, "preload.cjs"), process.env.VITE_DEV_SERVER_URL ?? path.join(__dirname, "../dist/index.html"), Boolean(process.env.VITE_DEV_SERVER_URL));
+  createdWindow.webContents.once("destroyed", () => {
+    sources.cancelAll();
+    sources.releaseAllLeases();
+  });
   const reportVisibility = () => {
     if (!createdWindow.isDestroyed()) createdWindow.webContents.send(IPC_CHANNELS.windowVisibility, createdWindow.isVisible() && !createdWindow.isMinimized());
   };
@@ -176,6 +209,7 @@ if (!hasSingleInstanceLock) {
   const appStateRepository = new AppStateRepository(dataPath);
   const sessionRepository = new SessionRepository(dataPath);
   const visualizerSettings = new VisualizerSettingsRepository(dataPath);
+  const equalizer = new EqualizerRepository(dataPath);
   const visualizerPresentation = new VisualizerPresentationRepository(dataPath);
   const visualizerLibrary = new VisualizerPresetLibrary(dataPath);
   const mediaCache = new MediaCache(userDataPath, [
@@ -185,74 +219,86 @@ if (!hasSingleInstanceLock) {
   const savedSession = await sessionRepository.loadActive();
   mediaCache.protect(savedSession ? protectedSessionSourceIds(savedSession) : []);
   await mediaCache.initialize();
+  if (savedSession) await mediaCache.retainSession(savedSession).catch(cause => console.warn("[cache] startup-collection-failed", cause));
   const sources = new SourceService(mediaCache.audioDirectory, undefined, mediaCache);
+  activeSources = sources;
   const musicSources = new MusicSourceService();
 
   const initialAppState = await appStateRepository.load();
   let visualizerLocale = resolveLocale(initialAppState.languagePreference, app.getPreferredSystemLanguages());
   configureApplicationMenu(visualizerLocale);
 
-  ipcMain.handle(IPC_CHANNELS.getPreferredLanguages, () => app.getPreferredSystemLanguages());
-  ipcMain.handle(IPC_CHANNELS.applyLocale, (_event, locale: SupportedLocale) => {
+  registerHandler(IPC_CHANNELS.getPreferredLanguages, () => app.getPreferredSystemLanguages());
+  registerHandler(IPC_CHANNELS.applyLocale, (_event, locale: SupportedLocale) => {
     if (locale !== "es" && locale !== "en") throw new Error("LOCALE_UNSUPPORTED");
     visualizerLocale = locale;
     configureApplicationMenu(locale);
   });
-  ipcMain.handle(IPC_CHANNELS.listDjs, () => repository.list());
-  ipcMain.handle(IPC_CHANNELS.saveDj, (_event, profile: DjProfile) => repository.save(profile));
-  ipcMain.handle(IPC_CHANNELS.deleteDj, (_event, id: string) => repository.delete(id));
-  ipcMain.handle(IPC_CHANNELS.loadAppState, () => appStateRepository.load());
-  ipcMain.handle(IPC_CHANNELS.saveAppState, (_event, state: AppState) => appStateRepository.save(state));
-  ipcMain.handle(IPC_CHANNELS.loadActiveSession, () => sessionRepository.loadActive());
-  ipcMain.handle(IPC_CHANNELS.saveActiveSession, async (_event, snapshot: SessionSnapshot) => {
+  registerHandler(IPC_CHANNELS.listDjs, () => repository.list());
+  registerHandler(IPC_CHANNELS.saveDj, (_event, profile: DjProfile) => repository.save(profile));
+  registerHandler(IPC_CHANNELS.deleteDj, (_event, id: string) => repository.delete(id));
+  registerHandler(IPC_CHANNELS.loadAppState, () => appStateRepository.load());
+  registerHandler(IPC_CHANNELS.saveAppState, (_event, state: AppState) => appStateRepository.save(state));
+  registerHandler(IPC_CHANNELS.loadActiveSession, () => sessionRepository.loadActive());
+  registerHandler(IPC_CHANNELS.saveActiveSession, async (_event, snapshot: SessionSnapshot) => {
     await sessionRepository.saveActive(snapshot);
-    mediaCache.protect(protectedSessionSourceIds(snapshot));
+    await mediaCache.retainSession(snapshot).catch(cause => console.warn("[cache] session-collection-failed", cause));
   });
-  ipcMain.handle(IPC_CHANNELS.clearActiveSession, async () => {
+  registerHandler(IPC_CHANNELS.clearActiveSession, async () => {
     await sessionRepository.clearActive();
     mediaCache.protect([]);
   });
-  ipcMain.handle(IPC_CHANNELS.getCacheStats, () => mediaCache.getStats());
-  ipcMain.handle(IPC_CHANNELS.getCachePolicy, () => mediaCache.getPolicy());
-  ipcMain.handle(IPC_CHANNELS.saveCachePolicy, (_event, policy: CachePolicy) => mediaCache.savePolicy(policy));
-  ipcMain.handle(IPC_CHANNELS.cleanupCache, () => mediaCache.cleanup());
-  ipcMain.handle(IPC_CHANNELS.clearUnusedCache, () => mediaCache.clearUnused());
-  ipcMain.handle(IPC_CHANNELS.protectCacheSources, (_event, sourceIds: string[]) => mediaCache.protect(sourceIds));
-  ipcMain.handle(IPC_CHANNELS.getCachedLoudness, (_event, sourceId: string) => mediaCache.getLoudness(sourceId));
-  ipcMain.handle(IPC_CHANNELS.saveCachedLoudness, (_event, sourceId: string, analysis: LoudnessAnalysis) => mediaCache.saveLoudness(sourceId, analysis));
-  ipcMain.handle(IPC_CHANNELS.loadVisualizerSettings, () => visualizerSettings.load());
-  ipcMain.handle(IPC_CHANNELS.saveVisualizerSettings, (_event, settings: VisualizerSettings) => visualizerSettings.save(settings));
-  ipcMain.handle(IPC_CHANNELS.loadVisualizerPresentation, () => visualizerPresentation.load());
-  ipcMain.handle(IPC_CHANNELS.saveVisualizerPresentation, (_event, presentation: VisualizerPresentation) => visualizerPresentation.save(presentation));
-  ipcMain.handle(IPC_CHANNELS.listVisualizerPresets, () => visualizerLibrary.list());
-  ipcMain.handle(IPC_CHANNELS.loadVisualizerPresetDefinition, (_event, id: string) => visualizerLibrary.loadDefinition(id));
-  ipcMain.handle(IPC_CHANNELS.importVisualizerPresets, (event, request: VisualizerPresetImportRequest) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("VISUALIZER_IMPORT_UNAVAILABLE");
+  registerHandler(IPC_CHANNELS.getCacheStats, () => mediaCache.getStats());
+  registerHandler(IPC_CHANNELS.getCachePolicy, () => mediaCache.getPolicy());
+  registerHandler(IPC_CHANNELS.saveCachePolicy, (_event, policy: CachePolicy) => mediaCache.savePolicy(policy));
+  registerHandler(IPC_CHANNELS.cleanupCache, () => mediaCache.cleanup());
+  registerHandler(IPC_CHANNELS.clearUnusedCache, () => mediaCache.clearUnused());
+  registerHandler(IPC_CHANNELS.protectCacheSources, (_event, sourceIds: string[]) => mediaCache.protect(sourceIds));
+  registerHandler(IPC_CHANNELS.getCachedLoudness, (_event, sourceId: string) => mediaCache.getLoudness(sourceId));
+  registerHandler(IPC_CHANNELS.saveCachedLoudness, (_event, sourceId: string, analysis: LoudnessAnalysis) => mediaCache.saveLoudness(sourceId, analysis));
+  registerHandler(IPC_CHANNELS.loadVisualizerSettings, () => visualizerSettings.load());
+  registerHandler(IPC_CHANNELS.loadEqualizerSettings, () => equalizer.load());
+  registerHandler(IPC_CHANNELS.saveEqualizerSettings, (_event, settings: EqualizerSettings) => equalizer.save(settings));
+  registerHandler(IPC_CHANNELS.saveVisualizerSettings, (_event, settings: VisualizerSettings) => visualizerSettings.save(settings));
+  registerHandler(IPC_CHANNELS.loadVisualizerPresentation, () => visualizerPresentation.load());
+  registerHandler(IPC_CHANNELS.saveVisualizerPresentation, (_event, presentation: VisualizerPresentation) => visualizerPresentation.save(presentation));
+  registerHandler(IPC_CHANNELS.listVisualizerPresets, () => visualizerLibrary.list());
+  registerHandler(IPC_CHANNELS.loadVisualizerPresetDefinition, (_event, id: string) => visualizerLibrary.loadDefinition(id));
+  registerHandler(IPC_CHANNELS.importVisualizerPresets, (event, request: VisualizerPresetImportRequest) => {
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    if (!parent || (parent !== mainWindow && parent !== nativeVisualizer?.window)) throw new Error("VISUALIZER_IMPORT_UNAVAILABLE");
     if (request?.mode !== "files" && request?.mode !== "directory") throw new Error("VISUALIZER_IMPORT_INVALID_REQUEST");
-    return visualizerLibrary.importFromDialog(mainWindow, request, visualizerLocale);
+    return visualizerLibrary.importFromDialog(parent, request, visualizerLocale);
   });
-  ipcMain.handle(IPC_CHANNELS.removeVisualizerPreset, (_event, id: string) => visualizerLibrary.remove(id));
-  ipcMain.handle(IPC_CHANNELS.retryVisualizerPreset, (_event, id: string) => visualizerLibrary.retry(id));
-  ipcMain.handle(IPC_CHANNELS.setVisualizerPresetFavorite, (_event, id: string, favorite: boolean) => visualizerLibrary.setFavorite(id, favorite));
-  ipcMain.handle(IPC_CHANNELS.checkConnectivity, () => hasInternetConnection());
-  ipcMain.handle(IPC_CHANNELS.getWindowVisibility, event => {
+  registerHandler(IPC_CHANNELS.removeVisualizerPreset, (_event, id: string) => visualizerLibrary.remove(id));
+  registerHandler(IPC_CHANNELS.retryVisualizerPreset, (_event, id: string) => visualizerLibrary.retry(id));
+  registerHandler(IPC_CHANNELS.setVisualizerPresetFavorite, (_event, id: string, favorite: boolean) => visualizerLibrary.setFavorite(id, favorite));
+  registerHandler(IPC_CHANNELS.checkConnectivity, () => hasInternetConnection());
+  registerHandler(IPC_CHANNELS.getWindowVisibility, event => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     return Boolean(owner && owner.isVisible() && !owner.isMinimized());
   });
-  ipcMain.handle(IPC_CHANNELS.setAudioActive, (event, active: boolean) => {
+  registerHandler(IPC_CHANNELS.setAudioActive, (event, active: boolean) => {
     event.sender.setBackgroundThrottling(!(active === true));
   });
-  ipcMain.handle(IPC_CHANNELS.setMediaControlsActive, (_event, active: boolean) => {
+  registerHandler(IPC_CHANNELS.setMediaControlsActive, (_event, active: boolean) => {
     setGlobalMediaControlsActive(active === true);
   });
-  ipcMain.handle(IPC_CHANNELS.searchSources, (_event, query: string, limit: number, scope?: SourceRequestScope) => sources.search(query, limit, scope));
-  ipcMain.handle(IPC_CHANNELS.searchManySources, (_event, queries: string[], limitPerQuery: number, scope?: SourceRequestScope) => sources.searchMany(queries, limitPerQuery, scope));
-  ipcMain.handle(IPC_CHANNELS.searchManyMusicSources, (_event, queries: string[], limitPerQuery: number, popularityLevel: PopularityLevel, scope?: SourceRequestScope) => musicSources.searchMany(queries, limitPerQuery, popularityLevel, scope));
-  ipcMain.handle(IPC_CHANNELS.inspectSource, (_event, url: string, scope?: SourceRequestScope) => sources.inspect(url, scope));
-  ipcMain.handle(IPC_CHANNELS.prepareSource, (_event, source: YouTubeSource, scope?: SourceRequestScope) => sources.prepare(source, scope));
-  ipcMain.handle(IPC_CHANNELS.readSource, (_event, leaseId: string) => sources.read(leaseId));
-  ipcMain.handle(IPC_CHANNELS.releaseSource, (_event, leaseId: string) => sources.release(leaseId));
-  ipcMain.handle(IPC_CHANNELS.cancelPlaybackSources, () => sources.cancelPlayback());
+  registerHandler(IPC_CHANNELS.searchSources, (_event, query: string, limit: number, scope?: SourceRequestScope) => sources.search(query, limit, scope));
+  registerHandler(IPC_CHANNELS.searchManySources, (_event, queries: string[], limitPerQuery: number, scope?: SourceRequestScope) => sources.searchMany(queries, limitPerQuery, scope));
+  registerHandler(IPC_CHANNELS.searchManyMusicSources, (_event, queries: string[], limitPerQuery: number, popularityLevel: PopularityLevel, scope?: SourceRequestScope) => musicSources.searchMany(queries, limitPerQuery, popularityLevel, scope));
+  registerHandler(IPC_CHANNELS.inspectSource, (_event, url: string, scope?: SourceRequestScope) => sources.inspect(url, scope));
+  registerHandler(IPC_CHANNELS.prepareSource, async (event, source: YouTubeSource, scope?: SourceRequestScope) => {
+    const prepared = await sources.prepare(source, scope);
+    if (event.sender.isDestroyed()) {
+      sources.release(prepared.leaseId);
+      throw new Error("SOURCE_OPERATION_CANCELLED");
+    }
+    return prepared;
+  });
+  registerHandler(IPC_CHANNELS.readSource, (_event, leaseId: string) => sources.read(leaseId));
+  registerHandler(IPC_CHANNELS.releaseSource, (_event, leaseId: string) => sources.release(leaseId));
+  registerHandler(IPC_CHANNELS.cancelPlaybackSources, () => sources.cancelPlayback());
 
   const sweepTimer = setInterval(() => {
     void mediaCache.cleanup().catch((cause) => console.warn("[cache] periodic-cleanup-failed", cause));
@@ -264,16 +310,18 @@ if (!hasSingleInstanceLock) {
   powerMonitor.on("resume", cleanupAfterResume);
 
   app.on("before-quit", () => {
+    nativeVisualizer?.quit();
     clearInterval(sweepTimer);
     powerMonitor.removeListener("resume", cleanupAfterResume);
     sources.cancelAll();
     setGlobalMediaControlsActive(false);
   });
 
-  createWindow();
+  createWindow(sources);
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(sources);
+    else if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.restore(); mainWindow.show(); }
   });
 });
 
@@ -300,9 +348,7 @@ function setGlobalMediaControlsActive(active: boolean): void {
 }
 
 function protectedSessionSourceIds(snapshot: SessionSnapshot): string[] {
-  return snapshot.queue
-    .slice(Math.max(0, snapshot.currentIndex - 1), snapshot.currentIndex + 2)
-    .map(({ id }) => id);
+  return playbackRetention(snapshot.queue, snapshot.currentIndex).protectedIds;
 }
 
 async function migrateLegacyProfiles(): Promise<void> {
@@ -325,7 +371,7 @@ async function migrateLegacyProfiles(): Promise<void> {
 
 app.on("second-instance", () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
-    createWindow();
+    if (activeSources) createWindow(activeSources);
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();

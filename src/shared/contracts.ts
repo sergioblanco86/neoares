@@ -170,6 +170,17 @@ export type AppState = {
   updatedAt: string;
 };
 
+export type EqualizerCurve = { gainsDb: number[]; preampDb: number };
+export type EqualizerPresetId = "rock" | "salsa" | "merengue" | "bass" | "treble" | "reggae" | "rap" | "rnb";
+export type PersonalEqualizerPreset = EqualizerCurve & { id: string; name: string };
+export type EqualizerSettings = EqualizerCurve & {
+  schemaVersion: 1;
+  enabled: boolean;
+  presetId: EqualizerPresetId | string | null;
+  personalPresets: PersonalEqualizerPreset[];
+  updatedAt: string;
+};
+
 export type RestorableSessionPhase = "PLAYING" | "PAUSED" | "RECOVERING";
 
 export type SessionSnapshot = {
@@ -232,6 +243,7 @@ export type CurationWeights = {
 };
 
 export type DesktopApi = {
+  nativeVisualizer?: import("./native-visualizer").NativeVisualizerApi;
   platform: NodeJS.Platform;
   locale: {
     getPreferredLanguages(): Promise<string[]>;
@@ -282,6 +294,10 @@ export type DesktopApi = {
     removeImportedPreset(id: string): Promise<void>;
     retryImportedPreset(id: string): Promise<VisualizerPresetDescriptor>;
     setFavorite(id: string, favorite: boolean): Promise<void>;
+  };
+  equalizer: {
+    loadSettings(): Promise<EqualizerSettings>;
+    saveSettings(settings: EqualizerSettings): Promise<void>;
   };
   sources: {
     search(query: string, limit: number, scope?: SourceRequestScope): Promise<YouTubeSource[]>;

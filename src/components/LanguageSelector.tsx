@@ -5,7 +5,7 @@ import type { LanguagePreference } from "../shared/contracts";
 
 const OPTIONS: LanguagePreference[] = ["system", "en", "es"];
 
-export function LanguageSelector({ placement = "topbar" }: { placement?: "topbar" | "connectivity" }) {
+export function LanguageSelector({ placement = "topbar" }: { placement?: "topbar" | "connectivity" | "sidebar" }) {
   const { locale, preference, setLanguagePreference, systemLocale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -36,7 +36,7 @@ export function LanguageSelector({ placement = "topbar" }: { placement?: "topbar
   }
 
   return (
-    <div className={`language-selector ${placement}`} ref={areaRef}>
+    <div className={`language-selector ${placement === "sidebar" ? "sidebar-language" : placement}`} ref={areaRef}>
       <button
         aria-expanded={open}
         aria-haspopup="menu"

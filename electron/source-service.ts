@@ -37,6 +37,8 @@ const DOWNLOAD_TIMEOUT_MS = 20_000;
 export class SourceService {
   readonly #leases = new Map<string, Lease>();
   readonly #activeProcesses = new Map<SpawnedProcess, ActiveProcess>();
+  readonly #preparations = new Map<string, Promise<string>>();
+  #playbackGeneration = 0;
 
   constructor(
     private readonly cacheRoot: string,
@@ -116,42 +118,14 @@ export class SourceService {
     const metadata = normalizePreparationSource(input);
     this.mediaCache?.acquire(metadata.id);
     try {
-      const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
-      await mkdir(this.cacheRoot, { recursive: true });
-
-      let filePath = await findCachedAudio(this.cacheRoot, metadata.id);
-      if (!filePath) {
-        const outputTemplate = path.join(this.cacheRoot, `${metadata.id}.%(ext)s`);
-        const output = await run(ytDlp, [
-          "--no-playlist",
-          "--no-warnings",
-          "--format",
-          "bestaudio[ext=m4a]/bestaudio",
-          "--socket-timeout",
-          "8",
-          "--retries",
-          "1",
-          "--fragment-retries",
-          "1",
-          "--js-runtimes",
-          "node",
-          "--output",
-          outputTemplate,
-          "--print",
-          "after_move:filepath",
-          metadata.canonicalUrl,
-        ], "download", DOWNLOAD_TIMEOUT_MS, this.#activeProcesses, scope);
-
-        const reportedPath = output.trim().split(/\r?\n/).filter(Boolean).at(-1);
-        if (!reportedPath) throw new Error("SOURCE_AUDIO_FILE_MISSING");
-        filePath = path.resolve(reportedPath);
+      let pending = this.#preparations.get(metadata.id);
+      if (!pending) {
+        pending = this.#prepareFile(metadata, scope);
+        this.#preparations.set(metadata.id, pending);
+        const completed = pending;
+        void completed.finally(() => { if (this.#preparations.get(metadata.id) === completed) this.#preparations.delete(metadata.id); }).catch(() => undefined);
       }
-
-      const cacheRoot = path.resolve(this.cacheRoot);
-      if (path.dirname(filePath) !== cacheRoot) {
-        throw new Error("SOURCE_PATH_OUTSIDE_CACHE");
-      }
-
+      const filePath = await pending;
       const fileStats = await stat(filePath);
       await this.mediaCache?.record(metadata.id, filePath);
       const leaseId = randomUUID();
@@ -169,6 +143,27 @@ export class SourceService {
     }
   }
 
+  async #prepareFile(metadata: YouTubeSource, scope: SourceRequestScope): Promise<string> {
+    const generation = this.#playbackGeneration;
+    await mkdir(this.cacheRoot, { recursive: true });
+    let filePath = await findCachedAudio(this.cacheRoot, metadata.id);
+    if (!filePath) {
+      const ytDlp = this.executableOverride ?? await resolveExecutable("yt-dlp");
+      if (scope === "playback" && generation !== this.#playbackGeneration) throw new Error("SOURCE_OPERATION_CANCELLED");
+      const output = await run(ytDlp, [
+        "--no-playlist", "--no-warnings", "--format", "bestaudio[ext=m4a]/bestaudio",
+        "--socket-timeout", "8", "--retries", "1", "--fragment-retries", "1",
+        "--js-runtimes", "node", "--output", path.join(this.cacheRoot, `${metadata.id}.%(ext)s`),
+        "--print", "after_move:filepath", metadata.canonicalUrl,
+      ], "download", DOWNLOAD_TIMEOUT_MS, this.#activeProcesses, scope);
+      const reportedPath = output.trim().split(/\r?\n/).filter(Boolean).at(-1);
+      if (!reportedPath) throw new Error("SOURCE_AUDIO_FILE_MISSING");
+      filePath = path.resolve(reportedPath);
+    }
+    if (path.dirname(filePath) !== path.resolve(this.cacheRoot)) throw new Error("SOURCE_PATH_OUTSIDE_CACHE");
+    return filePath;
+  }
+
   async read(leaseId: string): Promise<Uint8Array> {
     const lease = this.#leases.get(leaseId);
     if (!lease) throw new Error("SOURCE_PREPARED_UNAVAILABLE");
@@ -184,11 +179,19 @@ export class SourceService {
     this.mediaCache?.release(lease.source.id);
   }
 
+  releaseAllLeases(): void {
+    for (const leaseId of this.#leases.keys()) this.release(leaseId);
+  }
+
   cancelPlayback(): number {
+    this.#playbackGeneration++;
+    this.#preparations.clear();
     return this.#cancelMatching((active) => active.scope === "playback");
   }
 
   cancelAll(): number {
+    this.#playbackGeneration++;
+    this.#preparations.clear();
     return this.#cancelMatching(() => true);
   }
 

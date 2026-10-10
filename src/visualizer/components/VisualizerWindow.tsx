@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ChevronLeft, ChevronRight, Download, Heart, Import, Lock, Maximize2, Minimize2, RotateCcw, Shuffle, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Heart, Import, Lock, LockOpen, Maximize2, Minimize2, Pin, PinOff, RotateCcw, Shuffle, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
 import type { DualDeckMixer } from "../../audio/dual-deck-mixer";
 import type { VisualizerPresentation, VisualizerPresetDescriptor, VisualizerSettings, YouTubeSource } from "../../shared/contracts";
 import { loadBundledPresetDefinitions } from "../butterchurn-renderer";
@@ -8,12 +8,13 @@ import { useI18n } from "../../i18n/i18n";
 import { resolveVisualizerShortcut } from "../domain/visualizer-shortcuts";
 import { PresetNavigator } from "../domain/preset-navigator";
 import { VisualizerController } from "../visualizer-controller";
+import type { RemoteAudioSource } from "../native/remote-audio";
 
 type PresetEntry = VisualizerPresetDescriptor & { definition?: unknown };
 type Geometry = Pick<VisualizerPresentation, "x" | "y" | "width" | "height">;
-type Props = { mixer: DualDeckMixer; open: boolean; onClose(): void; track: YouTubeSource | null; playing?: boolean; positionSeconds?: number; durationSeconds?: number };
+type Props = { mixer: DualDeckMixer | RemoteAudioSource; native?: boolean; open: boolean; onClose(): void; track: YouTubeSource | null; playing?: boolean; positionSeconds?: number; durationSeconds?: number };
 
-export function VisualizerWindow({ mixer, open, onClose, track, playing = false, positionSeconds = 0, durationSeconds = 0 }: Props) {
+export function VisualizerWindow({ mixer, native = false, open, onClose, track, playing = false, positionSeconds = 0, durationSeconds = 0 }: Props) {
   const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const windowRef = useRef<HTMLElement>(null);
@@ -23,6 +24,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const activityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contextLossesRef = useRef(0);
+  const keyboardFocusRef = useRef(false);
   const [settings, setSettings] = useState<VisualizerSettings | null>(null);
   const [entries, setEntries] = useState<PresetEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,13 +38,26 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   const [fullscreen, setFullscreen] = useState(false);
   const [nativeVisible, setNativeVisible] = useState(true);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [pinned, setPinned] = useState(false);
   const [geometry, setGeometry] = useState<Geometry>({ x: 28, y: 80, width: 800, height: 500 });
   const [presentationReady, setPresentationReady] = useState(false);
   const [search, setSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [notice, setNotice] = useState("");
+  // A fresh object restarts the lifetime even when the same message repeats.
+  const [notice, setNoticeValue] = useState<{ message: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const hasData = settings !== null && entries.length > 0;
+
+  function setNotice(message: string): void {
+    setNoticeValue(message ? { message } : null);
+  }
+
+  useEffect(() => {
+    if (!open) { setNoticeValue(null); return; }
+    if (!notice) return;
+    const timer = setTimeout(() => setNoticeValue(null), 5000);
+    return () => clearTimeout(timer);
+  }, [open, notice]);
 
   function replaceEntries(next: PresetEntry[]): void {
     entriesRef.current = next; navigatorRef.current.setEntries(next); setEntries(next);
@@ -63,7 +78,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
       const all = [...bundledPresetCatalog(definitions), ...imported].map(entry => ({ ...entry, favorite: entry.favorite || favorites.has(entry.id) }));
       replaceEntries(all);
       settingsRef.current = stored; setSettings(stored);
-      setGeometry(boundGeometry(presentation)); setPresentationReady(true);
+      if (!native) setGeometry(boundGeometry(presentation)); setPresentationReady(true);
       const initial = all.find(entry => entry.id === stored.presetId && entry.compatibility === "ready")
         ?? all.find(entry => entry.id === "bundled-milkdrop2077-r002")
         ?? all.find(entry => entry.compatibility === "ready");
@@ -137,6 +152,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   }, [open, nativeVisible, status, settings?.autoChange, settings?.locked, settings?.changeIntervalSeconds, selectedAt]);
 
   const keyHandler = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape" && showLibrary) { event.preventDefault(); event.stopPropagation(); setShowLibrary(false); return; }
     const command = resolveVisualizerShortcut({ key: event.key, repeat: event.repeat, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, editable: isEditable(event.target), modalOpen: document.querySelector('[role="dialog"]') !== null, fullscreen });
     if (!command) return;
     event.preventDefault(); event.stopPropagation(); activity();
@@ -156,12 +172,13 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
 
   useEffect(() => {
     const update = () => setFullscreen(document.fullscreenElement === windowRef.current);
+    if (native) return window.desktop?.nativeVisualizer?.onFullscreen(setFullscreen);
     document.addEventListener("fullscreenchange", update);
     return () => document.removeEventListener("fullscreenchange", update);
-  }, []);
+  }, [native]);
 
   useEffect(() => {
-    if (!open || !presentationReady || fullscreen) return;
+    if (native || !open || !presentationReady || fullscreen) return;
     const timer = setTimeout(() => {
       void window.desktop?.visualizer.savePresentation({ schemaVersion: 1, ...geometry, updatedAt: new Date().toISOString() }).catch(() => setNotice(t("visualizer.saveFailed")));
     }, 200);
@@ -170,7 +187,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
 
   useEffect(() => {
     const element = windowRef.current;
-    if (!open || !element || fullscreen) return;
+    if (native || !open || !element || fullscreen) return;
     const observer = new ResizeObserver(() => {
       const rect = element.getBoundingClientRect();
       setGeometry(current => current.width === Math.round(rect.width) && current.height === Math.round(rect.height) ? current : { ...current, width: Math.round(rect.width), height: Math.round(rect.height) });
@@ -181,16 +198,25 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   }, [open, fullscreen]);
 
   useEffect(() => () => { dragCleanupRef.current?.(); if (activityTimerRef.current) clearTimeout(activityTimerRef.current); }, []);
+  useEffect(() => {
+    const keyboard = () => { keyboardFocusRef.current = true; activity(); };
+    const pointer = () => { keyboardFocusRef.current = false; };
+    window.addEventListener("keydown", keyboard); window.addEventListener("pointerdown", pointer, true);
+    return () => { window.removeEventListener("keydown", keyboard); window.removeEventListener("pointerdown", pointer, true); };
+  }, []);
+
+  useEffect(() => { if (open) activity(); }, [open, pinned, showLibrary]);
 
   if (!open) return null;
   const selected = entries.find(entry => entry.id === selectedId);
   const filtered = entries.filter(entry => (!favoritesOnly || entry.favorite) && `${entry.name} ${entry.author ?? ""}`.toLowerCase().includes(search.toLowerCase()));
   const progress = durationSeconds > 0 ? clamp(positionSeconds / durationSeconds, 0, 1) : 0;
-  const visible = controlsVisible || showLibrary || status !== "ready" || !playing;
-  return <section ref={windowRef} role="region" aria-label={t("visualizer.title")} className={`visualizer-window ${fullscreen ? "visualizer-fullscreen" : ""} ${visible ? "" : "visualizer-controls-hidden"}`} style={fullscreen ? undefined : { left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height }} onPointerMove={activity} onFocusCapture={activity} onPointerDown={activity} onDoubleClick={event => { if (event.target === canvasRef.current) void toggleFullscreen(); }}>
+  const visible = pinned || controlsVisible || showLibrary || status !== "ready";
+  return <section ref={windowRef} role="region" aria-label={t("visualizer.title")} className={`visualizer-window ${native ? "visualizer-native" : ""} ${fullscreen ? "visualizer-fullscreen" : ""} ${visible ? "" : "visualizer-controls-hidden"}`} style={native || fullscreen ? undefined : { left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height }} onPointerMove={activity} onFocusCapture={activity} onBlurCapture={activity} onPointerDown={activity} onDoubleClick={event => { if (event.target === canvasRef.current) void toggleFullscreen(); }}>
     <header className="visualizer-titlebar" onPointerDown={startDrag}>
       <div><span className="visualizer-status-dot" data-status={status} /><strong>{t("visualizer.title")}</strong><small>{selected ? `${selected.author ?? "MilkDrop"} — ${selected.name}` : t("visualizer.loading")}</small></div>
       <div className="visualizer-title-actions">
+        <button className="visualizer-pin" aria-pressed={pinned} title={t(pinned ? "visualizer.unpinControls" : "visualizer.pinControls")} aria-label={t(pinned ? "visualizer.unpinControls" : "visualizer.pinControls")} onClick={() => setPinned(value => !value)} type="button">{pinned ? <Pin size={16} /> : <PinOff size={16} />}</button>
         <button title={fullscreen ? t("visualizer.exitFullscreen") : t("visualizer.fullscreen")} aria-label={fullscreen ? t("visualizer.exitFullscreen") : t("visualizer.fullscreen")} onClick={() => void toggleFullscreen()} type="button">{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
         <button title={t("visualizer.close")} aria-label={t("visualizer.close")} onClick={close} type="button"><X size={18} /></button>
       </div>
@@ -202,7 +228,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
       {settings?.showTrackInfo && track ? <div className="visualizer-track">
         {track.thumbnailUrl ? <img alt="" src={track.thumbnailUrl} /> : null}<div><span>{t("visualizer.nowPlaying")}</span><strong>{track.title}</strong><small>{track.creator}</small><progress aria-label={t("visualizer.progress")} max={1} value={progress} /></div>
       </div> : null}
-      {notice && !showLibrary ? <p className="visualizer-toast" role="status">{notice}</p> : null}
+      {notice && !showLibrary ? <p className="visualizer-toast" role="status">{notice.message}</p> : null}
     </div>
     <footer className="visualizer-controls">
       <button title={t("visualizer.previous")} aria-label={t("visualizer.previous")} onClick={() => navigate("previous")} type="button"><ChevronLeft size={18} /></button>
@@ -211,7 +237,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
       <button title={t("visualizer.next")} aria-label={t("visualizer.next")} onClick={() => navigate("next")} type="button"><ChevronRight size={18} /></button>
       <span className="visualizer-divider" />
       <button title={t("visualizer.library")} aria-label={t("visualizer.library")} aria-expanded={showLibrary} onClick={() => setShowLibrary(value => !value)} type="button"><SlidersHorizontal size={17} /></button>
-      <button title={settings?.locked ? t("visualizer.unlock") : t("visualizer.lock")} aria-label={settings?.locked ? t("visualizer.unlock") : t("visualizer.lock")} aria-pressed={settings?.locked ?? false} onClick={() => void updateSettings({ locked: !settings?.locked })} type="button"><Lock size={16} /></button>
+      <button className="visualizer-lock" title={settings?.locked ? t("visualizer.unlock") : t("visualizer.lock")} aria-label={settings?.locked ? t("visualizer.unlock") : t("visualizer.lock")} aria-pressed={settings?.locked ?? false} disabled={!settings} onClick={() => void updateSettings({ locked: !settings?.locked })} type="button">{settings?.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </footer>
     {showLibrary ? <aside className="visualizer-library" aria-label={t("visualizer.library")}>
       <div className="visualizer-library-header"><strong>{t("visualizer.presets")}</strong><button aria-label={t("visualizer.closeLibrary")} onClick={() => setShowLibrary(false)} type="button"><X size={16} /></button></div>
@@ -236,7 +262,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
         <label><input type="checkbox" checked={settings.showTrackInfo} onChange={event => void updateSettings({ showTrackInfo: event.target.checked })} />{t("visualizer.trackInfo")}</label>
       </fieldset> : null}
       <div className="visualizer-import-actions"><button disabled={importing} onClick={() => void importPresets("files")} type="button"><Import size={15} />{t("visualizer.import")}</button><button disabled={importing} onClick={() => void importPresets("directory")} type="button"><Download size={15} />{t("visualizer.importDirectory")}</button></div>
-      {notice ? <p className="visualizer-notice" role="status">{notice}</p> : null}
+      {notice ? <p className="visualizer-notice" role="status">{notice.message}</p> : null}
     </aside> : null}
   </section>;
 
@@ -271,12 +297,15 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   }
 
   async function importPresets(mode: "files" | "directory"): Promise<void> {
+    setNotice("");
     setImporting(true);
     try {
       const result = await window.desktop?.visualizer.importPresets({ mode });
+      // Both dialog cancellations and empty folders have nothing to report.
+      if (!result || !(result.importedIds.length || result.skipped.length || result.incompatible.length)) return;
       const imported = await window.desktop?.visualizer.listPresets();
       if (imported) replaceEntries([...entriesRef.current.filter(entry => entry.origin === "bundled"), ...imported]);
-      if (result) setNotice(t("visualizer.importResult", { imported: result.importedIds.length, skipped: result.skipped.length, incompatible: result.incompatible.length }) + (result.incompatible.length ? ` · ${result.incompatible.map(item => `${item.sourceName}: ${item.reason}`).join(" · ")}` : ""));
+      setNotice(t("visualizer.importResult", { imported: result.importedIds.length, skipped: result.skipped.length, incompatible: result.incompatible.length }) + (result.incompatible.length ? ` · ${result.incompatible.map(item => `${item.sourceName}: ${item.reason}`).join(" · ")}` : ""));
     } catch { setNotice(t("visualizer.importFailed")); } finally { setImporting(false); }
   }
 
@@ -300,6 +329,7 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   }
 
   async function toggleFullscreen(): Promise<void> {
+    if (native) { try { setFullscreen(await window.desktop!.nativeVisualizer!.toggleFullscreen()); } catch { setNotice(t("visualizer.fullscreenFailed")); } return; }
     try { if (document.fullscreenElement === windowRef.current) await document.exitFullscreen(); else await windowRef.current?.requestFullscreen(); }
     catch { setNotice(t("visualizer.fullscreenFailed")); }
   }
@@ -307,9 +337,10 @@ export function VisualizerWindow({ mixer, open, onClose, track, playing = false,
   function activity(): void {
     setControlsVisible(true);
     if (activityTimerRef.current) clearTimeout(activityTimerRef.current);
-    activityTimerRef.current = setTimeout(() => { if (!windowRef.current?.contains(document.activeElement)) setControlsVisible(false); }, 2500);
+    activityTimerRef.current = setTimeout(() => { if (!keyboardFocusRef.current || !windowRef.current?.contains(document.activeElement)) setControlsVisible(false); }, 2500);
   }
   function startDrag(event: ReactPointerEvent<HTMLElement>): void {
+    if (native) return;
     if (fullscreen || event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
     event.preventDefault(); dragCleanupRef.current?.();
     const initial = geometry, startX = event.clientX, startY = event.clientY;

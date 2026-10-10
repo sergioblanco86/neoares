@@ -1,8 +1,18 @@
 # Contratos de implementación de NeoAres
 
+Full Player/cola responsive/idioma en sidebar/visuales nativos:
+[`contracts/FULL_PLAYER_NATIVE_VISUALIZER.md`](../contracts/FULL_PLAYER_NATIVE_VISUALIZER.md)
+reemplaza las restricciones DOM/cero IPC de frames anteriores.
+
 Los contratos específicos del Audio Reactive Visualizer se encuentran en
 [`contracts/VISUALIZER.md`](../contracts/VISUALIZER.md). Ese documento y sus
 JSON Schema prevalecen para el trabajo de la rama `feature/visualizer`.
+
+Actualización 2026-10-10: la reserva de cuatro temas ya decodificados, la
+retención de cuatro temas anteriores y el ecualizador están especificados en
+[`contracts/PLAYBACK_RESERVE_AND_EQUALIZER.md`](../contracts/PLAYBACK_RESERVE_AND_EQUALIZER.md).
+Ese contrato prevalece sobre las descripciones anteriores de una única pista
+preparada y sobre la política de retención por antigüedad para temas ya tocados.
 
 Estado: implementación base completada el 2026-09-22; pendiente de prueba
 prolongada y controles visuales de almacenamiento.
@@ -290,12 +300,14 @@ La limpieza ocurre:
 - cada treinta minutos aunque la aplicación siga abierta;
 - al volver de suspensión;
 - después de superar el presupuesto;
+- al guardar cada cambio de pista: se eliminan los temporales con más de cuatro
+  temas reproducidos después de ellos, protegiendo los cuatro anteriores;
 - por acción manual del usuario.
 
 Nunca se elimina un archivo que esté:
 
 - reproduciéndose;
-- preparado como siguiente pista;
+- entre los cuatro anteriores o entre las pistas futuras de la sesión;
 - descargándose o leyéndose;
 - protegido por el snapshot recuperable activo.
 

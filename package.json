@@ -21,6 +21,9 @@
     "test": "vitest run",
     "verify:visualizer": "electron scripts/verify-visualizer.cjs",
     "verify:visualizer-ui": "cross-env VISUALIZER_UI_TEST=1 electron scripts/verify-visualizer.cjs",
+    "verify:audio-features": "electron scripts/verify-audio-features.cjs",
+    "verify:equalizer-startup": "pnpm build:electron && electron scripts/verify-equalizer-startup.cjs",
+    "verify:full-player": "pnpm build && electron scripts/verify-full-player.cjs --packaged",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "start": "pnpm build && electron ."
   },

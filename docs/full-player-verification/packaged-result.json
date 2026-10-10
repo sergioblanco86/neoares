@@ -1,0 +1,739 @@
+{
+  "packaged": true,
+  "checks": [
+    {
+      "name": "marketing block removed",
+      "passed": true
+    },
+    {
+      "name": "real session/mixer and four-track reserve",
+      "passed": true
+    },
+    {
+      "name": "layout 1280x720 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "layout 1024x600 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "layout 800x900 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 800x900 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "layout 800x600 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 800x600 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "layout 640x480 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 640x480 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "layout 583x925 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "portrait 583x925 large square cover above track",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 583x925 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "layout 390x844 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "portrait 390x844 large square cover above track",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 390x844 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "layout 390x667 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "portrait 390x667 large square cover above track",
+      "passed": true
+    },
+    {
+      "name": "portrait error banners preserve track and transport",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 390x667 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "layout 360x360 no overflow / transport visible",
+      "passed": true
+    },
+    {
+      "name": "queue sheet 360x360 does not cover transport",
+      "passed": true
+    },
+    {
+      "name": "queue retains miniartworks",
+      "passed": true
+    },
+    {
+      "name": "queue action menu escapes short sheet and fits minimum viewport",
+      "passed": true
+    },
+    {
+      "name": "queue reorder menu changes actual playback order",
+      "passed": true
+    },
+    {
+      "name": "language menu opens upward inside sidebar",
+      "passed": true
+    },
+    {
+      "name": "sidebar language choice persisted",
+      "passed": true
+    },
+    {
+      "name": "EQ controls available at minimum",
+      "passed": true
+    },
+    {
+      "name": "actual native window loads actual preset",
+      "passed": true
+    },
+    {
+      "name": "visual preload cannot access source/profile APIs",
+      "passed": true
+    },
+    {
+      "name": "live language update reaches native window",
+      "passed": true
+    },
+    {
+      "name": "native fullscreen enters",
+      "passed": true
+    },
+    {
+      "name": "native fullscreen exits",
+      "passed": true
+    },
+    {
+      "name": "immersive controls hidden, song card retained",
+      "passed": true
+    },
+    {
+      "name": "existing preset library retained",
+      "passed": true
+    },
+    {
+      "name": "closing owner keeps audio window alive while visual open",
+      "passed": true
+    },
+    {
+      "name": "closing visual restores player",
+      "passed": true
+    },
+    {
+      "name": "thirty integrated reopen cycles",
+      "passed": true
+    },
+    {
+      "name": "no renderer errors",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "controls": {
+        "x": 37,
+        "y": 546,
+        "width": 698.078125,
+        "height": 104,
+        "top": 546,
+        "right": 735.078125,
+        "bottom": 650,
+        "left": 37
+      },
+      "queue": {
+        "x": 780.078125,
+        "y": 72,
+        "width": 483.90625,
+        "height": 599,
+        "top": 72,
+        "right": 1263.984375,
+        "bottom": 671,
+        "left": 780.078125
+      },
+      "artwork": {
+        "x": 37,
+        "y": 199.40625,
+        "width": 84,
+        "height": 84,
+        "top": 199.40625,
+        "right": 121,
+        "bottom": 283.40625,
+        "left": 37
+      },
+      "track": {
+        "x": 137,
+        "y": 218.40625,
+        "width": 531.5,
+        "height": 46,
+        "top": 218.40625,
+        "right": 668.5,
+        "bottom": 264.40625,
+        "left": 137
+      }
+    },
+    {
+      "width": 1024,
+      "height": 600,
+      "scrollWidth": 1024,
+      "scrollHeight": 600,
+      "controls": {
+        "x": 37,
+        "y": 426,
+        "width": 543.296875,
+        "height": 104,
+        "top": 426,
+        "right": 580.296875,
+        "bottom": 530,
+        "left": 37
+      },
+      "queue": {
+        "x": 625.296875,
+        "y": 72,
+        "width": 382.6875,
+        "height": 479,
+        "top": 72,
+        "right": 1007.984375,
+        "bottom": 551,
+        "left": 625.296875
+      },
+      "artwork": {
+        "x": 37,
+        "y": 149,
+        "width": 84,
+        "height": 84,
+        "top": 149,
+        "right": 121,
+        "bottom": 233,
+        "left": 37
+      },
+      "track": {
+        "x": 137,
+        "y": 168,
+        "width": 376.71875,
+        "height": 46,
+        "top": 168,
+        "right": 513.71875,
+        "bottom": 214,
+        "left": 137
+      }
+    },
+    {
+      "width": 800,
+      "height": 900,
+      "scrollWidth": 800,
+      "scrollHeight": 900,
+      "controls": {
+        "x": 37,
+        "y": 759,
+        "width": 726,
+        "height": 104,
+        "top": 759,
+        "right": 763,
+        "bottom": 863,
+        "left": 37
+      },
+      "queue": {
+        "x": 16,
+        "y": 95.75525665283203,
+        "width": 768,
+        "height": 675,
+        "top": 95.75525665283203,
+        "right": 784,
+        "bottom": 770.755256652832,
+        "left": 16
+      },
+      "artwork": {
+        "x": 37,
+        "y": 291.5,
+        "width": 84,
+        "height": 84,
+        "top": 291.5,
+        "right": 121,
+        "bottom": 375.5,
+        "left": 37
+      },
+      "track": {
+        "x": 137,
+        "y": 310.5,
+        "width": 559.421875,
+        "height": 46,
+        "top": 310.5,
+        "right": 696.421875,
+        "bottom": 356.5,
+        "left": 137
+      },
+      "openQueue": {
+        "queue": {
+          "x": 16,
+          "y": 72,
+          "width": 768,
+          "height": 675,
+          "top": 72,
+          "right": 784,
+          "bottom": 747,
+          "left": 16
+        },
+        "controls": {
+          "x": 37,
+          "y": 759,
+          "width": 726,
+          "height": 104,
+          "top": 759,
+          "right": 763,
+          "bottom": 863,
+          "left": 37
+        },
+        "visible": "visible"
+      }
+    },
+    {
+      "width": 800,
+      "height": 600,
+      "scrollWidth": 800,
+      "scrollHeight": 600,
+      "controls": {
+        "x": 37,
+        "y": 459,
+        "width": 726,
+        "height": 104,
+        "top": 459,
+        "right": 763,
+        "bottom": 563,
+        "left": 37
+      },
+      "queue": {
+        "x": 16,
+        "y": 96,
+        "width": 768,
+        "height": 375,
+        "top": 96,
+        "right": 784,
+        "bottom": 471,
+        "left": 16
+      },
+      "artwork": {
+        "x": 37,
+        "y": 165.5,
+        "width": 84,
+        "height": 84,
+        "top": 165.5,
+        "right": 121,
+        "bottom": 249.5,
+        "left": 37
+      },
+      "track": {
+        "x": 137,
+        "y": 184.5,
+        "width": 559.421875,
+        "height": 46,
+        "top": 184.5,
+        "right": 696.421875,
+        "bottom": 230.5,
+        "left": 137
+      },
+      "openQueue": {
+        "queue": {
+          "x": 16,
+          "y": 72,
+          "width": 768,
+          "height": 375,
+          "top": 72,
+          "right": 784,
+          "bottom": 447,
+          "left": 16
+        },
+        "controls": {
+          "x": 37,
+          "y": 459,
+          "width": 726,
+          "height": 104,
+          "top": 459,
+          "right": 763,
+          "bottom": 563,
+          "left": 37
+        },
+        "visible": "visible"
+      }
+    },
+    {
+      "width": 640,
+      "height": 480,
+      "scrollWidth": 640,
+      "scrollHeight": 480,
+      "controls": {
+        "x": 25,
+        "y": 355,
+        "width": 590,
+        "height": 100,
+        "top": 355,
+        "right": 615,
+        "bottom": 455,
+        "left": 25
+      },
+      "queue": {
+        "x": 12,
+        "y": 92,
+        "width": 616,
+        "height": 275,
+        "top": 92,
+        "right": 628,
+        "bottom": 367,
+        "left": 12
+      },
+      "artwork": {
+        "x": 25,
+        "y": 153,
+        "width": 64,
+        "height": 64,
+        "top": 153,
+        "right": 89,
+        "bottom": 217,
+        "left": 25
+      },
+      "track": {
+        "x": 121,
+        "y": 162,
+        "width": 482,
+        "height": 46,
+        "top": 162,
+        "right": 603,
+        "bottom": 208,
+        "left": 121
+      },
+      "openQueue": {
+        "queue": {
+          "x": 12,
+          "y": 68,
+          "width": 616,
+          "height": 275,
+          "top": 68,
+          "right": 628,
+          "bottom": 343,
+          "left": 12
+        },
+        "controls": {
+          "x": 25,
+          "y": 355,
+          "width": 590,
+          "height": 100,
+          "top": 355,
+          "right": 615,
+          "bottom": 455,
+          "left": 25
+        },
+        "visible": "visible"
+      }
+    },
+    {
+      "width": 583,
+      "height": 925,
+      "scrollWidth": 583,
+      "scrollHeight": 925,
+      "controls": {
+        "x": 24,
+        "y": 741,
+        "width": 535,
+        "height": 168,
+        "top": 741,
+        "right": 559,
+        "bottom": 909,
+        "left": 24
+      },
+      "queue": {
+        "x": 24,
+        "y": 92,
+        "width": 535,
+        "height": 661,
+        "top": 92,
+        "right": 559,
+        "bottom": 753,
+        "left": 24
+      },
+      "artwork": {
+        "x": 27.5,
+        "y": 68,
+        "width": 528,
+        "height": 528,
+        "top": 68,
+        "right": 555.5,
+        "bottom": 596,
+        "left": 27.5
+      },
+      "track": {
+        "x": 24,
+        "y": 612,
+        "width": 535,
+        "height": 53,
+        "top": 612,
+        "right": 559,
+        "bottom": 665,
+        "left": 24
+      },
+      "openQueue": {
+        "queue": {
+          "x": 24,
+          "y": 68,
+          "width": 535,
+          "height": 661,
+          "top": 68,
+          "right": 559,
+          "bottom": 729,
+          "left": 24
+        },
+        "controls": {
+          "x": 24,
+          "y": 741,
+          "width": 535,
+          "height": 168,
+          "top": 741,
+          "right": 559,
+          "bottom": 909,
+          "left": 24
+        },
+        "visible": "visible"
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 844,
+      "controls": {
+        "x": 24,
+        "y": 660,
+        "width": 342,
+        "height": 168,
+        "top": 660,
+        "right": 366,
+        "bottom": 828,
+        "left": 24
+      },
+      "queue": {
+        "x": 24,
+        "y": 92,
+        "width": 342,
+        "height": 580,
+        "top": 92,
+        "right": 366,
+        "bottom": 672,
+        "left": 24
+      },
+      "artwork": {
+        "x": 24,
+        "y": 68,
+        "width": 342,
+        "height": 342,
+        "top": 68,
+        "right": 366,
+        "bottom": 410,
+        "left": 24
+      },
+      "track": {
+        "x": 24,
+        "y": 426,
+        "width": 342,
+        "height": 53,
+        "top": 426,
+        "right": 366,
+        "bottom": 479,
+        "left": 24
+      },
+      "openQueue": {
+        "queue": {
+          "x": 24,
+          "y": 68,
+          "width": 342,
+          "height": 580,
+          "top": 68,
+          "right": 366,
+          "bottom": 648,
+          "left": 24
+        },
+        "controls": {
+          "x": 24,
+          "y": 660,
+          "width": 342,
+          "height": 168,
+          "top": 660,
+          "right": 366,
+          "bottom": 828,
+          "left": 24
+        },
+        "visible": "visible"
+      }
+    },
+    {
+      "width": 390,
+      "height": 667,
+      "scrollWidth": 390,
+      "scrollHeight": 667,
+      "controls": {
+        "x": 24,
+        "y": 483,
+        "width": 342,
+        "height": 168,
+        "top": 483,
+        "right": 366,
+        "bottom": 651,
+        "left": 24
+      },
+      "queue": {
+        "x": 24,
+        "y": 92,
+        "width": 342,
+        "height": 403,
+        "top": 92,
+        "right": 366,
+        "bottom": 495,
+        "left": 24
+      },
+      "artwork": {
+        "x": 60,
+        "y": 68,
+        "width": 270,
+        "height": 270,
+        "top": 68,
+        "right": 330,
+        "bottom": 338,
+        "left": 60
+      },
+      "track": {
+        "x": 24,
+        "y": 354,
+        "width": 342,
+        "height": 53,
+        "top": 354,
+        "right": 366,
+        "bottom": 407,
+        "left": 24
+      },
+      "openQueue": {
+        "queue": {
+          "x": 24,
+          "y": 68,
+          "width": 342,
+          "height": 403,
+          "top": 68,
+          "right": 366,
+          "bottom": 471,
+          "left": 24
+        },
+        "controls": {
+          "x": 24,
+          "y": 483,
+          "width": 342,
+          "height": 168,
+          "top": 483,
+          "right": 366,
+          "bottom": 651,
+          "left": 24
+        },
+        "visible": "visible"
+      }
+    },
+    {
+      "width": 360,
+      "height": 360,
+      "scrollWidth": 360,
+      "scrollHeight": 360,
+      "controls": {
+        "x": 25,
+        "y": 235,
+        "width": 310,
+        "height": 100,
+        "top": 235,
+        "right": 335,
+        "bottom": 335,
+        "left": 25
+      },
+      "queue": {
+        "x": 12,
+        "y": 92,
+        "width": 336,
+        "height": 155,
+        "top": 92,
+        "right": 348,
+        "bottom": 247,
+        "left": 12
+      },
+      "artwork": {
+        "x": 25,
+        "y": 93,
+        "width": 64,
+        "height": 64,
+        "top": 93,
+        "right": 89,
+        "bottom": 157,
+        "left": 25
+      },
+      "track": {
+        "x": 121,
+        "y": 102,
+        "width": 202,
+        "height": 46,
+        "top": 102,
+        "right": 323,
+        "bottom": 148,
+        "left": 121
+      },
+      "openQueue": {
+        "queue": {
+          "x": 12,
+          "y": 68,
+          "width": 336,
+          "height": 155,
+          "top": 68,
+          "right": 348,
+          "bottom": 223,
+          "left": 12
+        },
+        "controls": {
+          "x": 25,
+          "y": 235,
+          "width": 310,
+          "height": 100,
+          "top": 235,
+          "right": 335,
+          "bottom": 335,
+          "left": 25
+        },
+        "visible": "visible"
+      }
+    }
+  ],
+  "errors": []
+}

@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -46,6 +46,25 @@ describe("SourceService.prepare", () => {
       thumbnailUrl: null,
     })).rejects.toThrow("SOURCE_REFERENCE_INVALID");
   });
+
+  it("coalesces concurrent preparation for the same source but gives each reader an independent lease", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "neoares-source-single-flight-")); temporaryDirectories.push(directory);
+    const executable = path.join(directory, "download-tool"), audioPath = path.join(directory, "oWBf9hfW_4Y.m4a"), callPath = path.join(directory, "calls.txt");
+    await writeFile(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+fs.appendFileSync(${JSON.stringify(callPath)}, 'call\\n');
+fs.writeFileSync(${JSON.stringify(audioPath)}, Buffer.alloc(2048, 7));
+console.log(${JSON.stringify(audioPath)});
+`);
+    await chmod(executable, 0o700);
+    const service = new SourceService(directory, executable);
+    const source = { id: "oWBf9hfW_4Y", canonicalUrl: "https://www.youtube.com/watch?v=oWBf9hfW_4Y", title: "Test", creator: "Test", durationSeconds: 180, thumbnailUrl: null };
+    const [first, second] = await Promise.all([service.prepare(source, "playback"), service.prepare(source, "playback")]);
+    expect(await readFile(callPath, "utf8")).toBe("call\n"); expect(first.leaseId).not.toBe(second.leaseId);
+    service.release(first.leaseId); await expect(service.read(first.leaseId)).rejects.toThrow("SOURCE_PREPARED_UNAVAILABLE");
+    expect((await service.read(second.leaseId)).length).toBe(2048); service.releaseAllLeases(); service.releaseAllLeases();
+    await expect(service.read(second.leaseId)).rejects.toThrow("SOURCE_PREPARED_UNAVAILABLE");
+  });
 });
 
 describe("SourceService.searchMany", () => {
@@ -83,6 +102,13 @@ exit 1
 });
 
 describe("SourceService cancellation", () => {
+  it("invalidates preparation cancelled before the external process has spawned", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "neoares-preflight-cancel-")); temporaryDirectories.push(directory);
+    const service = new SourceService(directory, "/unused/preflight-test-tool");
+    const preparing = service.prepare({ id: "oWBf9hfW_4Y", canonicalUrl: "https://www.youtube.com/watch?v=oWBf9hfW_4Y", title: "Test", creator: "Test", durationSeconds: 180, thumbnailUrl: null }, "playback");
+    expect(service.cancelPlayback()).toBe(0);
+    await expect(preparing).rejects.toThrow("SOURCE_OPERATION_CANCELLED");
+  });
   it("cancels an in-flight preparation process", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "neoares-cancel-"));
     temporaryDirectories.push(directory);

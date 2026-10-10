@@ -47,6 +47,14 @@ terminal.
 
 ## 3. Preparación de la siguiente pista
 
+Desde 2026-10-10 la preparación se realiza fuera de los decks, para las cuatro
+próximas pistas, con dos trabajos concurrentes y prioridad a la siguiente.
+El resultado preparado se instala en el deck al avanzar, sin nueva descarga o
+decodificación. El contrato específico y sus invariantes de retención/EQ están
+en [PLAYBACK_RESERVE_AND_EQUALIZER.md](PLAYBACK_RESERVE_AND_EQUALIZER.md) y
+prevalecen para esta ampliación. La asociación a un deck existe solo al instalar
+el buffer; una preparación especulativa no puede modificar un deck en uso.
+
 ```ts
 type PreparationFailureCode =
   | "SOURCE_TIMEOUT"
@@ -61,7 +69,7 @@ type PreparationFailureCode =
 type PreparationAttempt = {
   attemptId: string;
   sourceId: string;
-  deck: "A" | "B";
+  deck?: "A" | "B"; // Sin deck durante preparación especulativa.
   generation: number;
   startedAt: string;
   deadlineAt: string;

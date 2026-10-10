@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neoares.local/contracts/equalizer-settings.schema.json",
+  "title": "EqualizerSettings",
+  "type": "object",
+  "required": ["schemaVersion", "enabled", "gainsDb", "preampDb", "presetId", "personalPresets", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "enabled": { "type": "boolean" },
+    "gainsDb": { "$ref": "#/$defs/gains" },
+    "preampDb": { "type": "number", "minimum": -12, "maximum": 12 },
+    "presetId": { "anyOf": [{ "type": "null" }, { "enum": ["rock", "salsa", "merengue", "bass", "treble", "reggae", "rap", "rnb"] }, { "type": "string", "pattern": "^personal-[a-zA-Z0-9-]{1,80}$" }] },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "personalPresets": {
+      "type": "array", "maxItems": 20,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "name", "gainsDb", "preampDb"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^personal-[a-zA-Z0-9-]{1,80}$" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "\\S" },
+          "gainsDb": { "$ref": "#/$defs/gains" },
+          "preampDb": { "type": "number", "minimum": -12, "maximum": 12 }
+        }
+      }
+    }
+  },
+  "$defs": { "gains": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "type": "number", "minimum": -12, "maximum": 12 } } }
+}

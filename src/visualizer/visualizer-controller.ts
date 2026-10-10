@@ -3,12 +3,14 @@ import type { VisualizerSettings } from "../shared/contracts";
 import { AudioAnalyzer } from "./audio/audio-analyzer";
 import { ButterchurnRenderer } from "./butterchurn-renderer";
 import { FrameMonitor, type RenderQuality } from "./domain/frame-monitor";
+import type { RemoteAudioSource } from "./native/remote-audio";
 
 export class VisualizerController {
   renderer = new ButterchurnRenderer();
   readonly #canvas: HTMLCanvasElement;
-  readonly #tap: MixerAnalysisTap;
-  readonly #analyzer: AudioAnalyzer;
+  readonly #tap: MixerAnalysisTap | null;
+  readonly #analyzer: AudioAnalyzer | null;
+  readonly #remote: RemoteAudioSource | null;
   readonly #observer: ResizeObserver;
   readonly #monitor = new FrameMonitor("medium");
   readonly #onError: (error: unknown) => void;
@@ -22,10 +24,11 @@ export class VisualizerController {
   #playing = false;
   #visible = true;
 
-  constructor(canvas: HTMLCanvasElement, mixer: DualDeckMixer, settings: VisualizerSettings, onError: (error: unknown) => void, onRestore: () => void) {
+  constructor(canvas: HTMLCanvasElement, mixer: DualDeckMixer | RemoteAudioSource, settings: VisualizerSettings, onError: (error: unknown) => void, onRestore: () => void) {
     this.#canvas = canvas;
-    this.#tap = mixer.createPostMasterAnalysisTap();
-    this.#analyzer = new AudioAnalyzer(this.#tap);
+    this.#tap = "createPostMasterAnalysisTap" in mixer ? mixer.createPostMasterAnalysisTap() : null;
+    this.#remote = "sample" in mixer ? mixer : null;
+    this.#analyzer = this.#tap ? new AudioAnalyzer(this.#tap) : null;
     this.#settings = settings;
     this.#onError = onError;
     this.#onRestore = onRestore;
@@ -39,7 +42,7 @@ export class VisualizerController {
   initialized: Promise<void>;
 
   #initializeRenderer(): Promise<void> {
-    return this.renderer.initialize(this.#canvas, this.#tap, () => {
+    return this.renderer.initialize(this.#canvas, (this.#tap ?? this.#remote)!, () => {
       this.#ready = false; this.#cancel(); this.#onError(new Error("VISUALIZER_CONTEXT_LOST"));
     }, this.#onRestore).then(() => { if (!this.#disposed) this.resize(); });
   }
@@ -63,6 +66,7 @@ export class VisualizerController {
 
   configure(settings: VisualizerSettings, playing: boolean, visible = true): void {
     this.#settings = settings; this.#playing = playing; this.resize();
+    if (this.#remote) this.#remote.playing = playing;
     if (visible !== this.#visible) { this.#visible = visible; this.#visibility(); }
   }
 
@@ -97,8 +101,8 @@ export class VisualizerController {
     if (!this.#lastAt || delta >= interval - 1) {
       this.#lastAt = timestamp;
       try {
-        this.#analyzer.sample(timestamp);
-        this.renderer.render(Math.min(0.1, delta / 1000) || 1 / 60);
+        this.#analyzer?.sample(timestamp);
+        this.renderer.render(Math.min(0.1, delta / 1000) || 1 / 60, this.#remote?.sample());
       } catch (error) { this.#ready = false; this.#onError(error); return; }
     }
     this.#schedule();
@@ -108,6 +112,6 @@ export class VisualizerController {
     if (this.#disposed) return;
     this.#disposed = true; this.#cancel();
     document.removeEventListener("visibilitychange", this.#visibility);
-    this.#observer.disconnect(); this.renderer.dispose(); this.#analyzer.dispose(); this.#tap.release();
+    this.#observer.disconnect(); this.renderer.dispose(); this.#analyzer?.dispose(); this.#tap?.release();
   }
 }

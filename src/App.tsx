@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { AudioLines, CircleAlert, PanelLeftOpen, Plus, Sparkles } from "lucide-react";
+import { AudioLines, CircleAlert, Menu, Plus } from "lucide-react";
 import { AutonomousDjPanel } from "./components/AutonomousDjPanel";
 import { ConnectivityGate } from "./components/ConnectivityGate";
 import { CreateDjDialog } from "./components/CreateDjDialog";
-import { LanguageSelector } from "./components/LanguageSelector";
 import { Sidebar } from "./components/Sidebar";
 import { useConnectivity } from "./hooks/use-connectivity";
 import { readableError } from "./i18n/errors";
@@ -23,6 +22,28 @@ export function App() {
   const [editingProfile, setEditingProfile] = useState<DjProfile | null>(null);
   const [saving, setSaving] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previous = document.activeElement;
+    document.querySelector<HTMLButtonElement>(".sidebar-close")?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const nodes = [...document.querySelectorAll<HTMLElement>('.sidebar button:not(:disabled), .sidebar input:not(:disabled), .sidebar select')].filter(node => node.getClientRects().length);
+      const first = nodes[0], last = nodes.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    window.addEventListener("keydown", trap);
+    return () => { window.removeEventListener("keydown", trap); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, []);
 
   useEffect(() => {
     void loadDjs();
@@ -66,11 +87,13 @@ export function App() {
   }
 
   function createDj(): void {
+    setSidebarOpen(false);
     setEditingProfile(null);
     setDialogOpen(true);
   }
 
   function editDj(profile: DjProfile): void {
+    setSidebarOpen(false);
     setEditingProfile(profile);
     setDialogOpen(true);
   }
@@ -98,7 +121,7 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell${sidebarOpen ? " sidebar-open" : " sidebar-closed"}`}>
+    <div className={`app-shell full-player-shell${sidebarOpen ? " sidebar-open" : " sidebar-closed"}`}>
       {sidebarOpen ? <button aria-label={t("app.closeSidebar")} className="sidebar-scrim" onClick={() => setSidebarOpen(false)} type="button" /> : null}
       <Sidebar
         djs={djs}
@@ -118,22 +141,17 @@ export function App() {
         selectedId={selectedDj?.id ?? null}
       />
 
-      <main className="main-content">
+      <main className="main-content" inert={sidebarOpen}>
         <header className="topbar">
           <div className="topbar-leading">
-            {!sidebarOpen ? <button aria-label={t("app.showDjs")} className="icon-button sidebar-open-button" onClick={() => setSidebarOpen(true)} title={t("app.showDjs")} type="button"><PanelLeftOpen size={18} /></button> : null}
-            <div className="topbar-context"><span className="eyebrow">NeoAres</span><strong>{selectedDj ? t("app.activeDj", { name: selectedDj.name }) : t("app.createFirstDj")}</strong></div>
+            <button aria-expanded={sidebarOpen} aria-label={t("app.showDjs")} className="icon-button sidebar-open-button" onClick={() => { window.dispatchEvent(new Event("neoares:sidebar")); setSidebarOpen(true); }} title={t("app.showDjs")} type="button"><Menu size={18} /></button>
+            <div className="topbar-context"><strong>{selectedDj?.name ?? "NeoAres"}</strong></div>
           </div>
-          <div className="topbar-actions"><LanguageSelector /></div>
+          <div className="topbar-actions" id="session-toolbar" />
         </header>
 
         <div className="page-content">
           {error ? <div className="alert error" role="alert"><CircleAlert size={18} /><div><strong>{t("app.needsAttention")}</strong><span>{error}</span></div></div> : null}
-
-          <section className="hero compact-hero">
-            <div><span className="eyebrow">{t("app.privateBooth")}</span><h1>{t("app.heroTitle")}</h1><p>{t("app.heroDescription")}</p></div>
-            <div className="hero-status"><span><Sparkles size={15} /> {t("app.dynamicCuration")}</span></div>
-          </section>
 
           {selectedDj ? <AutonomousDjPanel dj={selectedDj} key={selectedDj.id} /> : (
             <section className="panel empty-dj-state">

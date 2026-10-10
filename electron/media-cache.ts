@@ -1,11 +1,13 @@
 import { constants } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { CacheCleanupResult, CachePolicy, CacheStats, LoudnessAnalysis } from "../src/shared/contracts";
+import type { CacheCleanupResult, CachePolicy, CacheStats, LoudnessAnalysis, SessionSnapshot } from "../src/shared/contracts";
+import { playbackRetention } from "../src/domain/playback-retention";
 
 type CacheEntry = {
   sourceId: string;
   fileName: string;
+  fileNames?: string[];
   byteLength: number;
   createdAt: string;
   lastAccessedAt: string;
@@ -17,6 +19,7 @@ type CacheIndex = {
   policy: CachePolicy;
   entries: Record<string, CacheEntry>;
   updatedAt: string;
+  retiredSourceIds?: string[];
 };
 
 export const DEFAULT_CACHE_POLICY: CachePolicy = {
@@ -35,6 +38,8 @@ export class MediaCache {
   readonly #sessionProtectedIds = new Set<string>();
   #index: CacheIndex;
   #writeChain: Promise<void> = Promise.resolve();
+  #cleanupChain: Promise<unknown> = Promise.resolve();
+  #reconcileChain: Promise<void> = Promise.resolve();
 
   constructor(
     userDataDirectory: string,
@@ -72,9 +77,9 @@ export class MediaCache {
     const partials = await this.#partialFiles();
     return {
       totalBytes: entries.reduce((sum, entry) => sum + entry.byteLength, 0),
-      audioFileCount: entries.length,
+      audioFileCount: entries.reduce((sum, entry) => sum + (entry.fileNames?.length ?? 1), 0),
       partialFileCount: partials.length,
-      protectedFileCount: entries.filter(({ sourceId }) => this.isProtected(sourceId)).length,
+      protectedFileCount: entries.filter(({ sourceId }) => this.isProtected(sourceId)).reduce((sum, entry) => sum + (entry.fileNames?.length ?? 1), 0),
       oldestAccessedAt: entries.map(({ lastAccessedAt }) => lastAccessedAt).sort()[0] ?? null,
     };
   }
@@ -83,12 +88,14 @@ export class MediaCache {
     const resolved = path.resolve(filePath);
     if (path.dirname(resolved) !== path.resolve(this.audioDirectory)) throw new Error("CACHE_PATH_OUTSIDE_ROOT");
     const fileStats = await stat(resolved);
+    await this.#reconcileIndex();
     const now = new Date().toISOString();
     const previous = this.#index.entries[sourceId];
     this.#index.entries[sourceId] = {
       sourceId,
       fileName: path.basename(resolved),
-      byteLength: fileStats.size,
+      fileNames: previous?.fileNames ?? [path.basename(resolved)],
+      byteLength: previous?.byteLength ?? fileStats.size,
       createdAt: previous?.createdAt ?? now,
       lastAccessedAt: now,
       ...(previous?.loudness && previous.byteLength === fileStats.size && previous.fileName === path.basename(resolved)
@@ -126,6 +133,9 @@ export class MediaCache {
     const count = this.#leaseCounts.get(sourceId) ?? 0;
     if (count <= 1) this.#leaseCounts.delete(sourceId);
     else this.#leaseCounts.set(sourceId, count - 1);
+    if (this.#index.retiredSourceIds?.includes(sourceId)) {
+      void this.collectRetired().catch(cause => console.warn("[cache] deferred-collection-failed", cause));
+    }
   }
 
   protect(sourceIds: string[]): void {
@@ -133,11 +143,35 @@ export class MediaCache {
     for (const sourceId of sourceIds.filter(Boolean)) this.#sessionProtectedIds.add(sourceId);
   }
 
+  /** Register retirement independently of the age/size eviction policy. */
+  async retainSession(snapshot: SessionSnapshot): Promise<CacheCleanupResult> {
+    const { protectedIds, retiredIds } = playbackRetention(snapshot.queue, snapshot.currentIndex);
+    this.protect(protectedIds);
+    const protectedSet = new Set(protectedIds);
+    this.#index.retiredSourceIds = [...new Set([...(this.#index.retiredSourceIds ?? []), ...retiredIds])]
+      .filter(id => !protectedSet.has(id));
+    return this.collectRetired();
+  }
+
+  collectRetired(): Promise<CacheCleanupResult> {
+    return this.#serializeCleanup(() => this.#runCleanup(false, true));
+  }
+
   isProtected(sourceId: string): boolean {
     return this.#sessionProtectedIds.has(sourceId) || (this.#leaseCounts.get(sourceId) ?? 0) > 0;
   }
 
-  async cleanup(clearAllUnused = false): Promise<CacheCleanupResult> {
+  cleanup(clearAllUnused = false): Promise<CacheCleanupResult> {
+    return this.#serializeCleanup(() => this.#runCleanup(clearAllUnused, false));
+  }
+
+  #serializeCleanup<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.#cleanupChain.catch(() => undefined).then(operation);
+    this.#cleanupChain = pending;
+    return pending;
+  }
+
+  async #runCleanup(clearAllUnused: boolean, retiredOnly: boolean): Promise<CacheCleanupResult> {
     await this.#reconcileIndex();
     await this.#removeExpiredPartials();
     const entries = Object.values(this.#index.entries);
@@ -155,18 +189,28 @@ export class MediaCache {
     for (const entry of candidates) {
       const olderThanPolicy = Date.parse(entry.lastAccessedAt) < staleBefore;
       const overCleanupTarget = budgetCleanupActive && totalBytes > this.#index.policy.cleanupTargetBytes;
-      const shouldRemove = clearAllUnused || olderThanPolicy || overCleanupTarget;
+      const retired = this.#index.retiredSourceIds?.includes(entry.sourceId) === true;
+      const shouldRemove = retired || (!retiredOnly && (clearAllUnused || olderThanPolicy || overCleanupTarget));
       if (!shouldRemove) continue;
-      try {
-        await unlink(path.join(this.audioDirectory, entry.fileName));
-      } catch (error) {
-        if (!isMissingFile(error)) throw error;
+      for (const fileName of entry.fileNames ?? [entry.fileName]) {
+        const managedPath = path.resolve(this.audioDirectory, fileName);
+        if (path.dirname(managedPath) !== path.resolve(this.audioDirectory)) throw new Error("CACHE_PATH_OUTSIDE_ROOT");
+        try {
+          const fileStats = await stat(managedPath);
+          if (this.isProtected(entry.sourceId)) break;
+          await unlink(managedPath);
+          totalBytes -= fileStats.size;
+          removedFiles += 1;
+          removedBytes += fileStats.size;
+        } catch (error) {
+          if (!isMissingFile(error)) throw error;
+        }
       }
-      delete this.#index.entries[entry.sourceId];
-      totalBytes -= entry.byteLength;
-      removedFiles += 1;
-      removedBytes += entry.byteLength;
     }
+
+    await this.#reconcileIndex();
+    totalBytes = await this.#totalBytes();
+    this.#index.retiredSourceIds = this.#index.retiredSourceIds?.filter(id => Boolean(this.#index.entries[id]) || (this.#leaseCounts.get(id) ?? 0) > 0);
 
     await this.#saveIndex();
     return { bytesBefore, bytesAfter: Math.max(0, totalBytes), removedFiles, removedBytes };
@@ -186,7 +230,12 @@ export class MediaCache {
     return emptyIndex(this.#index.policy);
   }
 
-  async #reconcileIndex(): Promise<void> {
+  #reconcileIndex(): Promise<void> {
+    this.#reconcileChain = this.#reconcileChain.catch(() => undefined).then(() => this.#runReconcileIndex());
+    return this.#reconcileChain;
+  }
+
+  async #runReconcileIndex(): Promise<void> {
     await mkdir(this.audioDirectory, { recursive: true });
     const names = await readdir(this.audioDirectory);
     const existing = new Set<string>();
@@ -194,13 +243,22 @@ export class MediaCache {
       const match = /^(.+)\.(m4a|webm)$/i.exec(fileName);
       if (!match) continue;
       const sourceId = match[1];
-      const fileStats = await stat(path.join(this.audioDirectory, fileName));
+      let fileStats;
+      try { fileStats = await stat(path.join(this.audioDirectory, fileName)); }
+      catch (error) { if (isMissingFile(error)) continue; throw error; }
       if (!fileStats.isFile() || fileStats.size <= 1_024) continue;
+      if (existing.has(sourceId)) {
+        const entry = this.#index.entries[sourceId];
+        entry.fileNames!.push(fileName);
+        entry.byteLength += fileStats.size;
+        continue;
+      }
       existing.add(sourceId);
       const previous = this.#index.entries[sourceId];
       this.#index.entries[sourceId] = {
         sourceId,
         fileName,
+        fileNames: [fileName],
         byteLength: fileStats.size,
         createdAt: previous?.createdAt ?? fileStats.birthtime.toISOString(),
         lastAccessedAt: previous?.lastAccessedAt ?? fileStats.mtime.toISOString(),
@@ -279,7 +337,7 @@ export class MediaCache {
     this.#index.updatedAt = new Date().toISOString();
     const serialized = `${JSON.stringify(this.#index, null, 2)}\n`;
     const temporary = `${this.indexPath}.tmp`;
-    this.#writeChain = this.#writeChain.then(async () => {
+    this.#writeChain = this.#writeChain.catch(() => undefined).then(async () => {
       await mkdir(this.rootDirectory, { recursive: true });
       await writeFile(temporary, serialized, { encoding: "utf8", mode: 0o600 });
       await rename(temporary, this.indexPath);
@@ -309,9 +367,12 @@ function isCacheIndex(value: unknown): value is CacheIndex {
   if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.policy) || !isRecord(value.entries)) return false;
   try {
     assertCachePolicy(value.policy as CachePolicy);
-    return Object.values(value.entries).every((entry) => isRecord(entry)
+    return (value.retiredSourceIds === undefined || (Array.isArray(value.retiredSourceIds) && value.retiredSourceIds.every(id => typeof id === "string")))
+      && Object.values(value.entries).every((entry) => isRecord(entry)
       && typeof entry.sourceId === "string"
       && typeof entry.fileName === "string"
+      && path.basename(entry.fileName) === entry.fileName
+      && (entry.fileNames === undefined || (Array.isArray(entry.fileNames) && entry.fileNames.every(name => typeof name === "string" && path.basename(name) === name)))
       && typeof entry.byteLength === "number"
       && typeof entry.createdAt === "string"
       && typeof entry.lastAccessedAt === "string"

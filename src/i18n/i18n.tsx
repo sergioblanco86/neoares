@@ -26,11 +26,16 @@ const DEFAULT_APP_STATE: AppState = {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-export function I18nProvider({ children }: { children: ReactNode }) {
+export function I18nProvider({ children, nativeVisual = false }: { children: ReactNode; nativeVisual?: boolean }) {
   const [appState, setAppState] = useState<AppState | null>(null);
   const [preferredLanguages, setPreferredLanguages] = useState<string[]>(() => browserLanguages());
   const stateRef = useRef<AppState>(DEFAULT_APP_STATE);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const [nativeLocale, setNativeLocale] = useState<SupportedLocale | null>(null);
+  useEffect(() => {
+    if (!nativeVisual) return;
+    return window.desktop?.nativeVisualizer?.onState(state => { if (state.locale === "en" || state.locale === "es") setNativeLocale(state.locale); });
+  }, [nativeVisual]);
 
   useEffect(() => {
     let active = true;
@@ -53,14 +58,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const preference = appState?.languagePreference ?? "system";
   const systemLocale = resolveLocale("system", preferredLanguages);
-  const locale = resolveLocale(preference, preferredLanguages);
+  const locale = nativeLocale ?? resolveLocale(preference, preferredLanguages);
 
   useEffect(() => {
     if (!appState) return;
     document.documentElement.lang = locale;
     document.title = "NeoAres";
-    void window.desktop?.locale.apply(locale).catch((cause) => console.warn("[locale] native-menu-update-failed", cause));
-  }, [appState, locale]);
+    if (!nativeVisual) void window.desktop?.locale.apply(locale).catch((cause) => console.warn("[locale] native-menu-update-failed", cause));
+  }, [appState, locale, nativeVisual]);
 
   function updateAppState(patch: Partial<Pick<AppState, "lastSelectedDjId" | "languagePreference">>): Promise<void> {
     const next: AppState = {

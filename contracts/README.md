@@ -3,6 +3,10 @@
 Esta carpeta define el lenguaje estable entre UI, orquestador, curador,
 preparación, mixer y persistencia.
 
+Full Player, cola adaptable, idioma en sidebar y ventana nativa de visuales:
+[`FULL_PLAYER_NATIVE_VISUALIZER.md`](FULL_PLAYER_NATIVE_VISUALIZER.md).
+Prevalece sobre las restricciones anteriores de presentación del visualizador.
+
 Los JSON Schema usan Draft 2020-12. Los contratos son independientes del
 lenguaje de implementación.
 
@@ -25,6 +29,8 @@ lenguaje de implementación.
 - [Máquinas de estado](STATE_MACHINES.md)
 - [Continuidad de sesión](SESSION_CONTINUITY.md)
 - [Audio Reactive Visualizer](VISUALIZER.md)
+- [Reserva de cuatro temas, limpieza y ecualizador](PLAYBACK_RESERVE_AND_EQUALIZER.md)
+- [`equalizer-settings.schema.json`](schemas/equalizer-settings.schema.json)
 
 El conjunto de requisitos aprobado para la siguiente implementación está en
 [`docs/IMPLEMENTATION_CONTRACTS.md`](../docs/IMPLEMENTATION_CONTRACTS.md).

@@ -2,7 +2,7 @@ import { access, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { CachePolicy } from "../src/shared/contracts";
+import type { CachePolicy, SessionSnapshot } from "../src/shared/contracts";
 import { MediaCache } from "./media-cache";
 
 const temporaryDirectories: string[] = [];
@@ -96,5 +96,53 @@ describe("MediaCache", () => {
     await reloaded.initialize();
 
     expect(reloaded.getLoudness("normalized")).toMatchObject({ integratedLufs: -18, recommendedGainDb: 4 });
+  });
+
+  async function retentionFixture() {
+    const userData = await temporaryDirectory("neoares-retention-");
+    const cache = new MediaCache(userData, [], { ...TEST_POLICY, maxBytes: 100_000, cleanupTargetBytes: 90_000 });
+    await mkdir(cache.audioDirectory, { recursive: true });
+    for (let index = 1; index <= 13; index++) await writeFile(path.join(cache.audioDirectory, `track${index}.m4a`), Buffer.alloc(1200, index));
+    await cache.initialize();
+    const snapshot = { queue: Array.from({ length: 13 }, (_, index) => ({ id: `track${index + 1}` })), currentIndex: 8 } as SessionSnapshot;
+    return { cache, userData, snapshot };
+  }
+
+  it("implements the exact nine-track example and preserves all upcoming audio", async () => {
+    const { cache, snapshot } = await retentionFixture();
+    expect(await cache.retainSession(snapshot)).toMatchObject({ removedFiles: 4, bytesAfter: 9 * 1200 });
+    for (let index = 1; index <= 4; index++) await expect(access(path.join(cache.audioDirectory, `track${index}.m4a`))).rejects.toMatchObject({ code: "ENOENT" });
+    for (let index = 5; index <= 13; index++) await expect(stat(path.join(cache.audioDirectory, `track${index}.m4a`))).resolves.toMatchObject({ size: 1200 });
+    expect(await cache.clearUnused()).toMatchObject({ removedFiles: 0 });
+  });
+  it("defers leased retired audio and collects immediately after its final release", async () => {
+    const { cache, snapshot } = await retentionFixture(); cache.acquire("track1"); cache.acquire("track1");
+    expect(await cache.retainSession(snapshot)).toMatchObject({ removedFiles: 3 });
+    cache.release("track1"); await cache.collectRetired(); await expect(access(path.join(cache.audioDirectory, "track1.m4a"))).resolves.toBeUndefined();
+    cache.release("track1"); await cache.collectRetired(); await expect(access(path.join(cache.audioDirectory, "track1.m4a"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("persists deferred retirement across restart and protects repeated IDs in the reserve", async () => {
+    const { cache, snapshot, userData } = await retentionFixture(); cache.acquire("track1");
+    snapshot.queue[12] = { ...snapshot.queue[12], id: "track2" };
+    await cache.retainSession(snapshot);
+    await expect(access(path.join(cache.audioDirectory, "track2.m4a"))).resolves.toBeUndefined();
+    const restarted = new MediaCache(userData, [], { ...TEST_POLICY, maxBytes: 100_000, cleanupTargetBytes: 90_000 });
+    restarted.protect(snapshot.queue.slice(4).map(track => track.id)); await restarted.initialize();
+    await expect(access(path.join(cache.audioDirectory, "track1.m4a"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(cache.audioDirectory, "track2.m4a"))).resolves.toBeUndefined();
+  });
+  it("serializes simultaneous collectors without double-counting or deleting protected audio", async () => {
+    const { cache, snapshot } = await retentionFixture();
+    const results = await Promise.all([cache.retainSession(snapshot), cache.collectRetired(), cache.cleanup(), cache.clearUnused()]);
+    expect(results.reduce((sum, result) => sum + result.removedFiles, 0)).toBe(4);
+    expect(await cache.getStats()).toMatchObject({ audioFileCount: 9, protectedFileCount: 9 });
+  });
+  it("removes every managed encoding of a retired source and accounts for all their bytes", async () => {
+    const { cache, snapshot } = await retentionFixture();
+    await writeFile(path.join(cache.audioDirectory, "track1.webm"), Buffer.alloc(1500, 1));
+    expect(await cache.getStats()).toMatchObject({ audioFileCount: 14, totalBytes: 17100 });
+    expect(await cache.retainSession(snapshot)).toMatchObject({ bytesBefore: 17100, bytesAfter: 10800, removedFiles: 5, removedBytes: 6300 });
+    await expect(access(path.join(cache.audioDirectory, "track1.m4a"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(cache.audioDirectory, "track1.webm"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

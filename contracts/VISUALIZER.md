@@ -1,5 +1,8 @@
 # Contrato de implementación: Audio Reactive Visualizer
 
+> Presentación actual: `FULL_PLAYER_NATIVE_VISUALIZER.md` prevalece sobre las
+> restricciones DOM y cero IPC de frames de este documento desde 2026-10-10.
+
 Estado: aprobado para implementación en `feature/visualizer`.
 
 Este documento es la referencia normativa y autocontenida para implementar el
@@ -998,9 +1001,10 @@ solo porque el bundle compile en macOS.
 
 ## 19. Límite explícito de presentación
 
-La experiencia completa incluye panel flotante y fullscreen porque ambos usan
-el `AudioContext` real, no alteran la cadena de audio y cumplen la regla de cero
-IPC de frames. Una nueva ventana nativa no es un requisito funcional ni una
-alternativa equivalente bajo esa restricción técnica. Si más adelante se decide
-abrirla, requiere un ADR separado que defina memoria compartida, backpressure,
-seguridad y recuperación entre renderers.
+Actualizado 2026-10-10: la presentación requerida es una ventana Electron nativa
+independiente, además de fullscreen nativo. No se mantiene otra instancia visual
+DOM simultánea. El único mixer continúa en la principal y envía PCM post-master
+real por MessagePort acotado; el visual tiene solo un contexto suspendido de
+metadatos. `FULL_PLAYER_NATIVE_VISUALIZER.md` define ownership, seguridad,
+backpressure, recuperación y cierre. Las restricciones históricas de las
+secciones anteriores sobre el mismo contexto/cero IPC de frames ya no aplican.

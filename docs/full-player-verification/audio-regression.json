@@ -1,0 +1,83 @@
+{
+  "passed": true,
+  "pcm": {
+    "flat": {
+      "rms": 0.14142131941468578,
+      "peak": 0.20000000298023224,
+      "limiterReductionDb": null
+    },
+    "low": {
+      "rms": 0.3145792814606219,
+      "peak": 0.44488245248794556,
+      "limiterReductionDb": null
+    },
+    "mid": {
+      "rms": 0.12510283141526707,
+      "peak": 0.17678554356098175,
+      "limiterReductionDb": null
+    },
+    "high": {
+      "rms": 0.2808095037985772,
+      "peak": 0.36088913679122925,
+      "limiterReductionDb": null
+    },
+    "trebleMid": {
+      "rms": 0.16808230915868502,
+      "peak": 0.23770380020141602,
+      "limiterReductionDb": null
+    },
+    "bypass": {
+      "rms": 0.14142131941468578,
+      "peak": 0.20000000298023224,
+      "limiterReductionDb": null
+    },
+    "extreme": {
+      "rms": 0.7637011602973501,
+      "peak": 1.0842771530151367,
+      "limiterReductionDb": -13.390097618103027
+    },
+    "extremeUnlimited": {
+      "rms": 4.700078370032963,
+      "peak": 6.637878894805908,
+      "limiterReductionDb": null
+    },
+    "individualBands": [
+      {
+        "frequency": 31,
+        "gainDb": -12,
+        "targetChangeDb": -11.999998985569471,
+        "midChangeDb": -0.007926645824322192,
+        "limitedMidChangeDb": -0.007926689746575075
+      },
+      {
+        "frequency": 31,
+        "gainDb": 12,
+        "targetChangeDb": 11.999999576043493,
+        "midChangeDb": 0.007926648176765935,
+        "limitedMidChangeDb": 0.007926601388866026
+      },
+      {
+        "frequency": 16000,
+        "gainDb": -12,
+        "targetChangeDb": -11.99999891711139,
+        "midChangeDb": -0.011850400844737633,
+        "limitedMidChangeDb": -0.0118504504870273
+      },
+      {
+        "frequency": 16000,
+        "gainDb": 12,
+        "targetChangeDb": 11.99999956872693,
+        "midChangeDb": 0.01185040355453743,
+        "limitedMidChangeDb": 0.011850364452521644
+      }
+    ]
+  },
+  "preparedCalls": 15,
+  "releasedLeases": 14,
+  "remainingLeases": 0,
+  "threeRapidSkipsMs": 94,
+  "personalPresets": 1,
+  "preparationFailureRecovered": true,
+  "equalizerRestartGuidance": true,
+  "equalizerLoadRetry": true
+}

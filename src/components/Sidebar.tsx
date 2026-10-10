@@ -3,6 +3,7 @@ import { AudioLines, CircleAlert, MoreHorizontal, PanelLeftClose, Pencil, Plus, 
 import neoAresIcon from "../../logos/newIconLogo.png";
 import { useI18n } from "../i18n/i18n";
 import type { DjProfile } from "../shared/contracts";
+import { LanguageSelector } from "./LanguageSelector";
 
 type SidebarProps = {
   djs: DjProfile[];
@@ -72,6 +73,7 @@ export function Sidebar({ djs, loadState, selectedId, onClose, onCreate, onDelet
       </div>
 
       <button className="sidebar-create-wide" onClick={onCreate} type="button"><Plus size={16} /> {t("sidebar.newDj")}</button>
+      <div className="sidebar-footer"><LanguageSelector placement="sidebar" /></div>
     </aside>
   );
 }

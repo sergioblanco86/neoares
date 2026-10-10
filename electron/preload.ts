@@ -1,8 +1,31 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "./channels";
+import type { EqualizerSettings } from "../src/shared/contracts";
 import type { AppState, CacheCleanupResult, CachePolicy, CacheStats, DesktopApi, DjProfile, LoudnessAnalysis, MediaControlCommand, PreparedYouTubeSource, SessionSnapshot, SupportedLocale, VisualizerImportResult, VisualizerPresentation, VisualizerPresetDescriptor, VisualizerPresetImportRequest, VisualizerSettings, YouTubeSource } from "../src/shared/contracts";
 
+const visualRole = process.argv.includes("--neoares-visualizer");
+ipcRenderer.on(IPC_CHANNELS.nativeVisualizerPort, (event, value) => {
+  if (value?.role !== (visualRole ? "consumer" : "owner") || typeof value.generation !== "string" || !event.ports[0]) return;
+  window.postMessage({ type: "neoares:visualizer-port", ...value }, "*", event.ports);
+});
+function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
+  const handler = (_event: Electron.IpcRendererEvent, value: T) => listener(value);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
 const api: DesktopApi = {
+  nativeVisualizer: {
+    open: () => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerOpen),
+    close: () => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerClose),
+    ready: () => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerReady),
+    publish: state => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerState, state),
+    toggleFullscreen: () => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerFullscreen),
+    onState: listener => subscribe(IPC_CHANNELS.nativeVisualizerState, listener),
+    onClosed: listener => subscribe(IPC_CHANNELS.nativeVisualizerClosed, listener),
+    onCapture: listener => subscribe(IPC_CHANNELS.nativeVisualizerCapture, listener),
+    onFullscreen: listener => subscribe(IPC_CHANNELS.nativeVisualizerFullscreenChanged, listener),
+  },
   platform: process.platform,
   locale: {
     getPreferredLanguages: () => ipcRenderer.invoke(IPC_CHANNELS.getPreferredLanguages) as Promise<string[]>,
@@ -62,6 +85,10 @@ const api: DesktopApi = {
     removeImportedPreset: (id) => ipcRenderer.invoke(IPC_CHANNELS.removeVisualizerPreset, id) as Promise<void>,
     setFavorite: (id, favorite) => ipcRenderer.invoke(IPC_CHANNELS.setVisualizerPresetFavorite, id, favorite) as Promise<void>,
   },
+  equalizer: {
+    loadSettings: () => ipcRenderer.invoke(IPC_CHANNELS.loadEqualizerSettings) as Promise<EqualizerSettings>,
+    saveSettings: settings => ipcRenderer.invoke(IPC_CHANNELS.saveEqualizerSettings, settings) as Promise<void>,
+  },
   sources: {
     search: (query, limit, scope) => ipcRenderer.invoke(IPC_CHANNELS.searchSources, query, limit, scope) as Promise<YouTubeSource[]>,
     searchMany: (queries, limitPerQuery, scope) => ipcRenderer.invoke(IPC_CHANNELS.searchManySources, queries, limitPerQuery, scope) as Promise<YouTubeSource[][]>,
@@ -74,4 +101,9 @@ const api: DesktopApi = {
   },
 };
 
-contextBridge.exposeInMainWorld("desktop", api);
+contextBridge.exposeInMainWorld("desktop", visualRole ? {
+  platform: api.platform, visualizer: api.visualizer, locale: api.locale,
+  appState: { load: api.appState.load },
+  runtime: { getWindowVisibility: api.runtime.getWindowVisibility, onWindowVisibility: api.runtime.onWindowVisibility },
+  nativeVisualizer: { close: api.nativeVisualizer!.close, ready: api.nativeVisualizer!.ready, toggleFullscreen: api.nativeVisualizer!.toggleFullscreen, onState: api.nativeVisualizer!.onState, onFullscreen: api.nativeVisualizer!.onFullscreen },
+} : api);
