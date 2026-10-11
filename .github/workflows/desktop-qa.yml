@@ -40,7 +40,7 @@ jobs:
       - name: Production window controls
         env:
           NEOARES_QA_OUTPUT: ${{ runner.temp }}
-        run: pnpm exec electron scripts/verify-full-player.cjs --packaged --window-actions-only
+        run: pnpm exec electron ${{ runner.os == 'Windows' && '--use-angle=swiftshader --enable-unsafe-swiftshader' || '' }} scripts/verify-full-player.cjs --packaged --window-actions-only
       # Windows CI uses SwiftShader explicitly; this tests rendering in a VM,
       # not a certification of every physical GPU/driver or OS resize gesture.
       - name: All bundled presets and real audio routing (Windows software GPU)
