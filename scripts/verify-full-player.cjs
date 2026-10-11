@@ -164,7 +164,11 @@ async function verifyWindowChrome() {
   await click(win,'.visualizer-pin');
   await until(()=>run(win,`document.querySelector('.visualizer-pin').getAttribute('aria-pressed')==='true'`),'visualizer pinned for window QA');
   win.setContentSize(360,300);await wait(200);
-  check(await run(win, `(()=>{const buttons=[...document.querySelectorAll('.visualizer-title-actions button')].map(b=>b.getBoundingClientRect()),r=document.querySelector('.visualizer-window').getBoundingClientRect();return buttons.length===5 && buttons.every(r=>r.left>=0 && r.right<=innerWidth) && document.documentElement.scrollWidth===innerWidth && r.left===0 && r.top===0 && r.right===innerWidth && r.bottom===innerHeight;})()`), 'Visualizer fills minimum window and all five header controls fit');
+  const visualLayout = await run(win, `(()=>{const buttons=[...document.querySelectorAll('.visualizer-title-actions button')].map(b=>b.getBoundingClientRect().toJSON()),r=document.querySelector('.visualizer-window').getBoundingClientRect().toJSON();return {buttons,bounds:r,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,dpr:devicePixelRatio};})()`);
+  layouts.push({ visualLayout });
+  writeFileSync(path.join(output,'chrome-visualizer-360.png'),(await win.webContents.capturePage()).toPNG());
+  const {buttons,bounds:r,width,height,scrollWidth} = visualLayout;
+  check(buttons.length===5 && buttons.every(r=>r.left>=0 && r.right<=width) && scrollWidth===width && r.left===0 && r.top===0 && r.right===width && r.bottom===height, 'Visualizer fills minimum window and all five header controls fit');
   writeFileSync(path.join(output,'chrome-visualizer-360.png'),(await win.webContents.capturePage()).toPNG());
   await exercise(win,'Visualizer');
   check(await transport(),'Visualizer window actions preserve owner playback');
