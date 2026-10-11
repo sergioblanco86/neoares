@@ -66,7 +66,16 @@ describe("sender-scoped custom window controls", () => {
     const { win } = fixture(); attachWindowControls(win as unknown as BrowserWindow);
     for (const event of ["maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "minimize", "restore", "focus", "blur"]) win.emit(event);
     expect(win.webContents.send).toHaveBeenCalledTimes(8);
-    expect(win.webContents.send).toHaveBeenLastCalledWith(C.windowControlsChanged, { maximized: false, fullscreen: false, minimized: false, focused: true });
+    expect(win.webContents.send).toHaveBeenLastCalledWith(C.windowControlsChanged, { maximized: false, fullscreen: false, minimized: false, focused: false });
     win.emit("closed"); expect(win.eventNames()).toEqual([]);
+  });
+  it("preserves authoritative fullscreen events when native getters lag on Windows", () => {
+    const { win, event } = fixture(); attachWindowControls(win as unknown as BrowserWindow);
+    win.emit("enter-full-screen");
+    expect(handlers.get(C.windowControlsState)!(event)).toMatchObject({ fullscreen: true });
+    win.isFullScreen = () => true;
+    win.emit("leave-full-screen"); win.emit("focus");
+    expect(win.webContents.send).toHaveBeenLastCalledWith(C.windowControlsChanged, { maximized: false, fullscreen: false, minimized: false, focused: true });
+    expect(handlers.get(C.windowControlsState)!(event)).toMatchObject({ fullscreen: false });
   });
 });

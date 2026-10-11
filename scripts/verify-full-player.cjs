@@ -355,6 +355,14 @@ app.whenReady().then(async () => {
     }
     const sources = wav(), leases = new Set();
     app.on('browser-window-created', (_event, win) => {
+      const trace = [];
+      const snapshot = event => {
+        if (win.isDestroyed()) return;
+        trace.push({ event, at: Date.now(), maximized: win.isMaximized(), fullscreen: win.isFullScreen(), minimized: win.isMinimized(), bounds: win.getBounds(), normalBounds: win.getNormalBounds() });
+        writeFileSync(path.join(output, `window-${win.id}-events.json`), JSON.stringify(trace, null, 2));
+      };
+      for (const event of ['maximize','unmaximize','enter-full-screen','leave-full-screen','minimize','restore','resize','focus','blur']) win.on(event, () => snapshot(event));
+      snapshot('created');
       win.webContents.setAudioMuted(true);
       win.webContents.on('console-message', event => { if (event.level === 'error') { errors.push(event.message); console.error('[renderer]', event.message); } });
       win.webContents.on('did-finish-load', () => {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, powerMonitor } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, powerMonitor, screen } from "electron";
 import { access, cp, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { IPC_CHANNELS } from "./channels";
@@ -46,9 +46,12 @@ const neoAresUserDataPath = path.join(app.getPath("appData"), "NeoAres");
 app.setPath("userData", neoAresUserDataPath);
 
 function createWindow(sources: SourceService): void {
+  // Keep a genuine normal size on small displays. Cocoa can otherwise clamp an
+  // oversized frameless window to its zoomed size, leaving nothing to restore.
+  const { width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    width: Math.max(360, Math.min(1440, Math.floor(width * 0.9))),
+    height: Math.max(360, Math.min(920, Math.floor(height * 0.9))),
     minWidth: 360,
     minHeight: 360,
     useContentSize: true,
