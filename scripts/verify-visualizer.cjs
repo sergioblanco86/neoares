@@ -7,12 +7,15 @@ const output = mkdtempSync(path.join(process.env.NEOARES_QA_OUTPUT || tmpdir(), 
 writeFileSync(path.join(output, "environment.json"), JSON.stringify({ platform: process.platform, arch: process.arch, electron: process.versions.electron, chromium: process.versions.chrome }, null, 2));
 app.setPath("userData", path.join(output, "profile"));
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+// Destroying the final window must not turn an asynchronous failure into an
+// automatic successful quit before the evidence/server cleanup has finished.
+app.on("window-all-closed", () => {});
 app.whenReady().then(async () => {
   let viteServer;
   const window = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { preload: path.join(__dirname, "visualizer-probe-preload.cjs"), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   ipcMain.handle("runtime:get-window-visibility", () => window.isVisible() && !window.isMinimized());
   for (const event of ["show", "hide", "minimize", "restore"]) window.on(event, () => window.webContents.send("runtime:window-visibility", window.isVisible() && !window.isMinimized()));
-  if (process.env.VISUALIZER_UI_TEST === "1") window.showInactive();
+  if (process.platform === "win32" || process.env.VISUALIZER_UI_TEST === "1") window.showInactive();
   window.webContents.setAudioMuted(true);
   window.webContents.on("console-message", event => {
     console.log(`[renderer:${event.level}] ${event.message}`);

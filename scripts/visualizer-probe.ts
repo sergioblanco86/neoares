@@ -34,6 +34,14 @@ export async function runVisualizerProbe() {
     frame = requestAnimationFrame(draw);
   };
   const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  const waitForSilence = async (id: string) => {
+    // A software GPU can take longer than one fixed 450ms sleep to render a
+    // fresh audio frame. Require the actual consumed PCM to settle, bounded.
+    const deadline = performance.now() + 5000;
+    await wait(150);
+    while (renderer.getAudioRms() > 0.002 && performance.now() < deadline) await wait(50);
+    if (renderer.getAudioRms() > 0.002) throw new Error(`Preset did not consume silence: ${id}`);
+  };
   const readings = async () => {
     const samples: Array<{ rms: number; bass: number; mids: number }> = [];
     for (let i = 0; i < 15; i++) { await wait(50); samples.push({ rms: renderer.getAudioRms(), bass: analyzer.frame.bass, mids: analyzer.frame.mids }); }
@@ -50,7 +58,7 @@ export async function runVisualizerProbe() {
     draw();
     await mixer.load("A", wav(80)); await mixer.load("B", wav(1000)); console.log("probe: decks decoded"); await mixer.play("A"); console.log("probe: playback started");
     const audible = await readings();
-    mixer.setVolume(0); await wait(400); const muted = await readings();
+    mixer.setVolume(0); await waitForSilence("initial"); const muted = await readings();
     mixer.setVolume(0.9); await wait(300);
     await mixer.crossfade("A", "B", 1.5); await wait(200); const crossfade = await readings();
     await wait(900); const afterFade = await readings();
@@ -68,8 +76,7 @@ export async function runVisualizerProbe() {
       const x = index % 2 * 640, y = Math.floor(index / 2) * 220;
       context.drawImage(canvas, x, y, 640, 190);
       context.fillStyle = "#ffffff"; context.font = "15px sans-serif"; context.fillText(`${preset.author ?? ""} — ${preset.name}`, x + 12, y + 211);
-      mixer.setVolume(0); await wait(450);
-      if (renderer.getAudioRms() > 0.002) throw new Error(`Preset did not consume silence: ${preset.id}`);
+      mixer.setVolume(0); await waitForSilence(preset.id);
       mixer.setVolume(0.9);
     }
     return { audible, muted, crossfade, afterFade, snapshots, renderErrors, image: grid.toDataURL("image/png"), csp: document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content") };
