@@ -23,8 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-2022, macos-15]
-    env:
-      NEOARES_QA_OUTPUT: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -40,14 +38,20 @@ jobs:
       - run: pnpm build
       # Test production file:// assets and actual IPC/BrowserWindow actions.
       - name: Production window controls
+        env:
+          NEOARES_QA_OUTPUT: ${{ runner.temp }}
         run: pnpm exec electron scripts/verify-full-player.cjs --packaged --window-actions-only
       # Windows CI uses SwiftShader explicitly; this tests rendering in a VM,
       # not a certification of every physical GPU/driver or OS resize gesture.
       - name: All bundled presets and real audio routing (Windows software GPU)
         if: runner.os == 'Windows'
+        env:
+          NEOARES_QA_OUTPUT: ${{ runner.temp }}
         run: pnpm exec electron --use-angle=swiftshader --enable-unsafe-swiftshader scripts/verify-visualizer.cjs
       - name: All bundled presets and real audio routing (macOS native GPU)
         if: runner.os == 'macOS'
+        env:
+          NEOARES_QA_OUTPUT: ${{ runner.temp }}
         run: pnpm exec electron scripts/verify-visualizer.cjs
       - name: Upload evidence, including failed runs
         if: always()
