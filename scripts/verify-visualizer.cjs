@@ -66,5 +66,8 @@ app.whenReady().then(async () => {
     }
     console.log(JSON.stringify({ output, audibleRms: audible, mutedRms: muted, presets: result.snapshots.length, passed: true }));
     await finish(0);
-  } catch (error) { console.error(error); console.error(`Evidence: ${output}`); await finish(1); }
+  } catch (error) {
+    writeFileSync(path.join(output, "failure.json"), JSON.stringify({ failure: String(error) }, null, 2));
+    console.error(error); console.error(`Evidence: ${output}`); await finish(1);
+  }
 });

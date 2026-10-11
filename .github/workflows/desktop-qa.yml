@@ -53,6 +53,10 @@ jobs:
         env:
           NEOARES_QA_OUTPUT: ${{ runner.temp }}
         run: pnpm exec electron scripts/verify-visualizer.cjs
+      - name: Require complete result artifacts independently of Electron exit code
+        env:
+          NEOARES_QA_OUTPUT: ${{ runner.temp }}
+        run: node scripts/verify-desktop-qa-results.cjs
       - name: Upload evidence, including failed runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
