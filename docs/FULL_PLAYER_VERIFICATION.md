@@ -4,6 +4,56 @@
 
 ## Resultado
 
+### Controles propios de ventana y EQ a borde — 2026-10-11
+
+Implementados sin controles nativos del SO: `frame: false` en player y visual.
+Barra propia32px del player sobre sesión56px; WindowControls compartido con
+minimizar/maximizar-restaurar/cerrar. Visual mantiene Pin/fullscreen y auto-hide.
+Restaurar también sale de fullscreen; el player conserva botones accesibles en
+ese estado. ES/EN, foco, hover, disabled y color de ventana inactiva definidos.
+IPC acotado al sender autorizado/main frame, sin IDs ni BrowserWindow genérico.
+
+**152 tests, typecheck y build aprobados. 51 comprobaciones integradas fuente y
+48 sobre el bundle local**: seis tamaños360×713,390×667,583×925,640×480,360×360,
+1280×720; geometría EQ/cola/búsqueda/sidebar, controles y estado nativo de ambas
+ventanas, cambios externos, minimizar, fullscreen y cerrar con/sin visual abierto.
+En fuente también PCM fresco y conservación de las cinco preparaciones (mixer
+no recreado). Perfiles temporales, audio/catálogo fixtures; IPC/main/preload/UI
+productivos. Cero errores de renderer en las ejecuciones definitivas.
+Regresión adicional: **76 comprobaciones bundle**, incluyendo treinta reaperturas,
+idioma, cola y fullscreen; **20 de estabilidad EQ fuente**, ES/EN en cuatro
+tamaños, sin desplazamiento de bandas/pie mientras cambia Guardando/Guardado.
+
+EQ en sheet: top88px, ancho100%, bottom exactamente viewport, border-radius0.
+Once columnas completas sin clipping horizontal; en portrait≥600px todo cabe
+verticalmente. En 360×360 el EQ usa scroll propio, nunca scroll global del player.
+Sidebar, diálogos y menú de cola respetan la franja de controles; EQ desktop no
+puede arrastrarse debajo de ella. Se corrigió además una media query DOM antigua
+que reducía visuales nativos a62vh en ancho≤640px; ahora es solo para visual DOM.
+
+El skill `saas-product-ui-system` guio densidad32px y separación de controles de
+ventana/música; `react-best-practices` guio subscripciones/cleanup, rechazo de
+snapshot inicial obsoleto y guard síncrono de doble clic. `verification` guio
+botón → preload → IPC autorizado → BrowserWindow → evento nativo → estado UI.
+
+- [Resultado fuente](full-player-verification/window-chrome/dev-result.json).
+- [Resultado bundle local](full-player-verification/window-chrome/packaged-result.json).
+- [Regresión bundle](full-player-verification/window-chrome/regression-packaged-result.json).
+- [Estabilidad EQ con barra nueva](full-player-verification/window-chrome/eq-stability-result.json).
+- [Player estrecho](full-player-verification/window-chrome/player-360x713.png).
+- [EQ hasta el borde](full-player-verification/window-chrome/equalizer-360x713.png).
+- [Visualizador estrecho sin marco](full-player-verification/window-chrome/visualizer-360.png).
+- [Decisión y estudio actualizado](design/full-player/WINDOW_CHROME_PLAN.md).
+
+Límites: Windows/Snap/DPI y arrastre/resize manual del SO requieren QA nativo;
+las pruebas automatizadas verifican regiones drag/no-drag por estilo y cambios
+de tamaño mediante Electron, no certifican gestos físicos. Sin firma/instalador.
+La compilación no es una certificación Windows. Esta mejora cambia main/preload:
+**requiere reiniciar NeoAres**, HMR solo no basta. No se interrumpió la sesión
+real ni se realizó commit/push de estos cambios.
+
+### Iteraciones anteriores (2026-10-10)
+
 Visualizer: Pin/Lock e importación aprobados con **26 comprobaciones fuente y
 25 sobre el bundle local**. Estado activo combina superficie/borde violeta,
 icono diferente, tooltip ES/EN y `aria-pressed`. Pin sigue fijando los controles;
@@ -183,7 +233,40 @@ pnpm exec electron scripts/verify-full-player.cjs --packaged --search-only
 pnpm exec electron scripts/verify-full-player.cjs --eq-stability-only
 pnpm exec electron scripts/verify-full-player.cjs --visualizer-controls-only
 pnpm exec electron scripts/verify-full-player.cjs --packaged --visualizer-controls-only
+pnpm exec electron scripts/verify-full-player.cjs --window-chrome-only
+pnpm exec electron scripts/verify-full-player.cjs --packaged --window-chrome-only
+pnpm exec electron scripts/verify-full-player.cjs --player-layout-only
+pnpm exec electron scripts/verify-full-player.cjs --packaged --player-layout-only
+pnpm exec electron scripts/verify-full-player.cjs --artwork-only
+pnpm exec electron scripts/verify-full-player.cjs --packaged --artwork-only
 ```
+
+## Recuperación y portada dominante — 2026-10-11
+
+- Diagnóstico: las acciones de recuperación competían con el título del DJ;
+  el CSS heredado ocultaba texto de botones secundarios en anchos ≤760px,
+  dejando «Descartar» sin contenido porque no tenía icono. La portada de 84px y
+  el bloque de waveform vacío no aprovechaban la altura del player completo.
+- Skill `saas-product-ui-system`: una acción principal en el transporte, estado
+  compacto en el shell, descarte secundario explícito, portada dominante y
+  controles agrupados. Se conservan tokens/idiomas, miniportadas y cola sheet.
+- «Continuar sesión» ahora vive en el transporte central; Espacio usa la misma
+  función. «Descartar sesión» sigue visible junto a herramientas. Recuperación
+  conserva portada/metadatos/posición mientras carga, con spinner y bloqueo de
+  doble acción. El progreso guardado se ve aunque aún no haya waveform.
+- Gate de layout dedicado con la UI/main/preload/repositorios reales, WAV y
+  perfil temporales: 16 tamaños × ES/EN × guardada/reproduciendo = 64 layouts.
+  Anchos 360,390,480,481,583,719,720,732,760,761,999,1000,1280,1920; alturas
+  360,480,667,710,713,720,925,978. Revisión visual de capturas móvil/intermedia/full.
+  Incluye zoom 200%, nombre largo, carga bloqueada, pausa/reanudación, descarte
+  persistente y ausencia de nuevas preparaciones al redimensionar.
+- Resultado final: fuente **228/228**, build de producción **226/226**, cero
+  errores de renderer. Typecheck, **152 tests / 35 archivos** y build aprobados.
+  Regresión integrada de producción **76/76**: cola, EQ, idiomas, ventana visual,
+  fullscreen, cierre/restauración y treinta ciclos de reapertura conservados.
+  Evidencias en `docs/full-player-verification/player-layout/`.
+- No se reinició ni cerró la sesión real del usuario. Las capturas usan portada
+  fixture y audio silenciado; no certifican fuentes remotas, Windows ni 4K.
 
 ## Límites / handoff
 

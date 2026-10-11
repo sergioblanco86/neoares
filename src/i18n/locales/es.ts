@@ -1,4 +1,11 @@
 export const es = {
+  "window.controls": "Controles de ventana",
+  "window.minimize": "Minimizar ventana",
+  "window.maximize": "Maximizar ventana",
+  "window.restore": "Restaurar ventana",
+  "window.close": "Cerrar ventana",
+  "window.exitFullscreen": "Salir de pantalla completa",
+  "window.failed": "Falló la acción de ventana. Reintenta.",
   "common.close": "Cerrar",
   "common.cancel": "Cancelar",
   "common.retry": "Reintentar",

@@ -4,6 +4,7 @@ import { readFile, writeFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { IPC_CHANNELS as C } from "./channels";
 import { isNativeVisualizerState, type NativeVisualizerState } from "../src/shared/native-visualizer";
+import { attachWindowControls } from "./window-controls";
 
 export function clampWindowBounds(bounds: Electron.Rectangle, areas: Electron.Rectangle[]): Electron.Rectangle {
   const fallback = areas[0] ?? { x: 0, y: 0, width: 1280, height: 720 };
@@ -81,10 +82,11 @@ export class NativeVisualizerHost {
     if (this.#quitting || this.owner.isDestroyed()) return;
     const win = new BrowserWindow({
       ...clampWindowBounds(saved, screen.getAllDisplays().map(d => d.workArea)),
-      minWidth: 360, minHeight: 240, title: "NeoAres · Visualizer", frame: false, show: false, backgroundColor: "#03030a",
+      minWidth: 360, minHeight: 240, title: "NeoAres · Visualizer", frame: false, autoHideMenuBar: true, show: false, backgroundColor: "#03030a",
       webPreferences: { preload: this.preload, additionalArguments: ["--neoares-visualizer"], sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: true },
     });
     this.window = win;
+    attachWindowControls(win);
     win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     win.webContents.on("will-navigate", (event, url) => { if (url !== win.webContents.getURL()) event.preventDefault(); });
     const visibility = () => {

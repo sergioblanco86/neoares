@@ -15,6 +15,11 @@ function subscribe<T>(channel: string, listener: (value: T) => void): () => void
 }
 
 const api: DesktopApi = {
+  windowControls: {
+    getState: () => ipcRenderer.invoke(IPC_CHANNELS.windowControlsState),
+    command: command => ipcRenderer.invoke(IPC_CHANNELS.windowControlsCommand, command),
+    onState: listener => subscribe(IPC_CHANNELS.windowControlsChanged, listener),
+  },
   nativeVisualizer: {
     open: () => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerOpen),
     close: () => ipcRenderer.invoke(IPC_CHANNELS.nativeVisualizerClose),
@@ -102,6 +107,7 @@ const api: DesktopApi = {
 };
 
 contextBridge.exposeInMainWorld("desktop", visualRole ? {
+  windowControls: api.windowControls,
   platform: api.platform, visualizer: api.visualizer, locale: api.locale,
   appState: { load: api.appState.load },
   runtime: { getWindowVisibility: api.runtime.getWindowVisibility, onWindowVisibility: api.runtime.onWindowVisibility },

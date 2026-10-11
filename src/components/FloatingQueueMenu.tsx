@@ -4,12 +4,14 @@ import { createPortal } from "react-dom";
 /** Menus escape the queue scroller; even a 360px window can expose every action. */
 export function FloatingQueueMenu({ anchor, children, onClose }: { anchor: HTMLElement | null; children: ReactNode; onClose(): void }) {
   const menu = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: 8, top: 8 });
+  const [position, setPosition] = useState({ left: 8, top: 8, maxHeight: "calc(100dvh - 16px)" });
   useLayoutEffect(() => {
     const place = () => {
       if (!anchor || !menu.current) return;
+      const minTop = (document.querySelector(".player-window-chrome")?.getBoundingClientRect().bottom ?? 0) + 8;
+      menu.current.style.maxHeight = `calc(100dvh - ${minTop + 8}px)`;
       const box = anchor.getBoundingClientRect(), rect = menu.current.getBoundingClientRect();
-      setPosition({ left: Math.max(8, Math.min(box.right - rect.width, innerWidth - rect.width - 8)), top: Math.max(8, Math.min(box.bottom, innerHeight - rect.height - 8)) });
+      setPosition({ left: Math.max(8, Math.min(box.right - rect.width, innerWidth - rect.width - 8)), top: Math.max(minTop, Math.min(box.bottom, innerHeight - rect.height - 8)), maxHeight: `calc(100dvh - ${minTop + 8}px)` });
     };
     place(); menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
     window.addEventListener("resize", onClose);

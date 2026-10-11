@@ -5,7 +5,7 @@ const { mkdtempSync, mkdirSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { buildSync } = require('esbuild');
-const output = mkdtempSync(path.join(tmpdir(), 'neoares-full-player-'));
+const output = mkdtempSync(path.join(process.env.NEOARES_QA_OUTPUT || tmpdir(), 'neoares-full-player-'));
 const profile = path.join(output, 'NeoAres'); mkdirSync(profile);
 app.setPath('appData', output); app.setPath('userData', profile);
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -13,15 +13,165 @@ const packaged = process.argv.includes('--packaged');
 const searchOnly = process.argv.includes('--search-only');
 const eqStabilityOnly = process.argv.includes('--eq-stability-only');
 const visualizerControlsOnly = process.argv.includes('--visualizer-controls-only');
+const windowActionsOnly = process.argv.includes('--window-actions-only');
+const windowChromeOnly = windowActionsOnly || process.argv.includes('--window-chrome-only');
+const playerLayoutOnly = process.argv.includes('--player-layout-only');
+const artworkOnly = process.argv.includes('--artwork-only');
+const liveArtwork = 'https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=w120-h120-l90-rj';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const checks = [], errors = [], layouts = [];
 function check(value, name) { checks.push({ name, passed: !!value }); console.log(`${value ? 'PASS' : 'FAIL'} ${name}`); if (!value) throw new Error(name); }
 async function until(predicate, name, timeout = 15000) { const start = Date.now(); while (Date.now() - start < timeout) { if (await predicate()) return; await wait(80); } throw new Error(`Timeout ${name}`); }
 let owner, server;
+// On Windows production quits when the last window closes. Keep this isolated
+// runner alive until it has asserted the close and written the result file.
+let finished = false;
+app.on('before-quit', event => { if (!finished) event.preventDefault(); });
+function finish() { finished = true; app.quit(); }
+writeFileSync(path.join(output, 'environment.json'), JSON.stringify({ platform: process.platform, arch: process.arch, electron: process.versions.electron, chromium: process.versions.chrome }, null, 2));
 const run = (win, code) => win.webContents.executeJavaScript(code, true);
 const click = (win, selector) => run(win, `document.querySelector(${JSON.stringify(selector)})?.click()`);
 const visual = () => BrowserWindow.getAllWindows().find(win => win !== owner);
 const probe = win => run(win, `window.qa.inspect()`);
+async function verifyArtwork() {
+  const inspect = selector => run(owner, `(()=>{const i=document.querySelector(${JSON.stringify(selector)});return i?{url:i.src,width:i.naturalWidth,height:i.naturalHeight,complete:i.complete,loading:i.loading}:null;})()`);
+  const cover = () => inspect('.now-track-artwork img');
+  owner.setContentSize(800,900);await wait(240);
+  await until(async()=> {const image=await cover();return image?.width===1425 && image.complete;},'native original fully loaded',45000);
+  await run(owner, `document.querySelector('.now-track-artwork img').decode()`);
+  const original=await cover();layouts.push({original});
+  check(original.url.endsWith('=s0') && original.height===1425 && original.loading==='eager','Saved 120px source renders real 1425px original without metadata migration');
+  await click(owner,'.queue-toggle');await wait(240);
+  await until(async()=> (await inspect('.queue-current img'))?.width===120,'queue miniature loaded',20000);
+  const miniature=await inspect('.queue-current img');layouts.push({miniature});
+  check(miniature.url===liveArtwork && miniature.height===120 && miniature.loading==='lazy','Queue keeps original 120px miniature, not full-resolution download');
+  await click(owner,'.queue-sheet-heading button');await wait(500);
+  writeFileSync(path.join(output,'radiosurgery-original.png'),(await owner.webContents.capturePage()).toPNG());
+  let failure='high';
+  const imageRequests=[];layouts.push({imageRequests});
+  owner.webContents.session.webRequest.onBeforeRequest({urls:['https://yt3.googleusercontent.com/*']},(details,callback)=>{const cancel=failure==='all'||(failure==='high'&&new URL(details.url).pathname.endsWith('=s0'));imageRequests.push({url:details.url,cancel});callback({cancel});});
+  // A distinct query per case forces a new request even if Chromium retains a
+  // decoded copy. Persist only in this runner's isolated temporary profile.
+  const reloadCase=async mode=>{
+    failure=mode;
+    await run(owner, `(async()=>{const s=await window.desktop.sessions.loadActive();s.queue[0].thumbnailUrl=${JSON.stringify(liveArtwork)}+'?neoares-qa='+${JSON.stringify(mode)};await window.desktop.sessions.saveActive(s);})()`);
+    owner.reload();await until(()=>run(owner,`document.querySelector('.now-playing')?.dataset.phase==='RESTORABLE'`),'saved artwork case restored');
+  };
+  await reloadCase('high');
+  await until(async()=> (await cover())?.width===120,'failed original falls back to miniature',25000);
+  check((await cover()).url===liveArtwork+'?neoares-qa=high','HTTP/network failure of original uses known thumbnail without a broken image');
+  await reloadCase('all');
+  await until(()=>run(owner,`!!document.querySelector('.now-track-artwork .lucide-music-2')`),'all candidates fail');
+  check(!await cover(),'Unavailable artwork renders intentional music icon, no failed img');
+  await reloadCase('none');
+  await until(async()=> {const image=await cover();return image?.width===1425 && image.complete;},'retry original after reload',45000);
+  check(true,'New mount retries original after previous failures');
+  owner.webContents.session.webRequest.onBeforeRequest(null);
+  await click(owner,'.primary-transport');
+  await until(()=>run(owner,`!!document.querySelector('button[aria-label="Pausar"]:not(:disabled)') && document.querySelectorAll('[data-preparation="ready"]').length===4`),'real mixer with cover');
+  check((await cover()).width===1425,'High-resolution cover survives real session recovery and playback');
+  await click(owner,'button[aria-label="Siguiente y mezclar"]');
+  await until(()=>run(owner,`document.querySelector('.now-track-copy strong')?.textContent.startsWith('Canción siguiente')`),'next track after high-res cover',15000);
+  await until(async()=> (await cover())?.width===500,'new track artwork decoded');
+  check((await cover()).url.startsWith('data:image/svg+xml,'),'Changing song replaces previous cover without stale fallback state');
+  await click(owner,'.session-stop');
+  await until(()=>run(owner,`(async()=> (await window.desktop.sessions.loadActive())===null)()`),'artwork QA stops and drains session writes');
+  await wait(200);
+}
+async function verifyPlayerLayout(saved) {
+  for (const locale of ['es', 'en']) {
+    await click(owner, '.sidebar-open-button');await click(owner, '.language-trigger');
+    await click(owner, `.language-menu button:nth-child(${locale==='es'?3:2})`);await click(owner,'.sidebar-close');
+    for(const [width,height] of [[360,713],[390,667],[480,713],[481,713],[583,925],[719,710],[720,710],[732,710],[760,710],[761,710],[999,710],[1000,710],[1280,720],[1920,978],[640,480],[360,360]]) {
+      owner.setContentSize(width,height);await wait(240);
+      const state=await run(owner, `(()=>{const r=s=>document.querySelector(s)?.getBoundingClientRect().toJSON();return {phase:document.querySelector('.now-playing').dataset.phase,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,art:r('.now-track-artwork'),copy:r('.now-track-copy'),controls:r('.player-controls'),progress:r('.player-waveform'),title:r('.topbar-context'),status:r('.autopilot-actions'),discard:r('.session-discard'),primary:r('.primary-transport'),actions:[...document.querySelectorAll('.player-controls button')].filter(b=>getComputedStyle(b).display!=='none').map(b=>({label:b.getAttribute('aria-label')||b.textContent,rect:b.getBoundingClientRect().toJSON(),scroll:b.scrollWidth,client:b.clientWidth}))};})()`);
+      layouts.push({saved,locale,...state});
+      check(state.width===width && state.height===height && state.scrollWidth===width && state.scrollHeight===height && state.controls.bottom<=height && state.controls.top>state.copy.bottom && state.actions.every(b=>b.rect.left>=0 && b.rect.right<=width && b.rect.bottom<=height && b.scroll<=b.client+2),`${saved?'Saved':'Playing'} ${locale} ${width}x${height} all actions fit without clipping`);
+      check(state.title.width>=100 && state.title.right<=state.status.left+1,`${saved?'Saved':'Playing'} ${locale} ${width} header preserves DJ title`);
+      if(height>=600) check(state.art.width>=180 && Math.abs(state.art.width-state.art.height)<1 && state.art.bottom<=state.copy.top+1 && state.copy.bottom<=state.progress.top,`${saved?'Saved':'Playing'} ${locale} ${width} cover above metadata and progress`);
+      if(saved) check(state.discard.width>100 && state.primary.width>150 && state.phase==='RESTORABLE',`Saved ${locale} ${width} explicit Continue and Discard stay visible`);
+      if(locale==='es' && [360,732,1280,1920].includes(width) && height>=600) writeFileSync(path.join(output,`player-${saved?'saved':'playing'}-${width}.png`),(await owner.webContents.capturePage()).toPNG());
+    }
+  }
+  await click(owner,'.sidebar-open-button');await click(owner,'.language-trigger');await click(owner,'.language-menu button:nth-child(3)');await click(owner,'.sidebar-close');
+  owner.setContentSize(1280,900);owner.webContents.setZoomFactor(2);await wait(240);
+  check(await run(owner, `(()=>{const r=document.querySelector('.player-controls').getBoundingClientRect();return document.documentElement.scrollWidth===innerWidth && r.left>=0 && r.right<=innerWidth && r.bottom<=innerHeight && [...document.querySelectorAll('.player-controls button')].filter(b=>getComputedStyle(b).display!=='none').every(b=>{const r=b.getBoundingClientRect();return r.right<=innerWidth && r.bottom<=innerHeight;});})()`),`${saved?'Saved':'Playing'} controls remain reachable at 200% zoom`);
+  owner.webContents.setZoomFactor(1);owner.setContentSize(360,713);await wait(240);
+  check(await run(owner, `(()=>{const title=document.querySelector('.topbar-context strong'),old=title.textContent;title.textContent='Una sesión de música con un nombre extremadamente largo';const r=title.getBoundingClientRect(),a=document.querySelector('.autopilot-actions').getBoundingClientRect();const valid=r.width>=100 && r.right<=a.left+1 && document.documentElement.scrollWidth===innerWidth;title.textContent=old;return valid;})()`),`${saved?'Saved':'Playing'} long DJ name truncates without displacing actions`);
+}
+async function verifyWindowChrome() {
+  const ownState = win => run(win, `window.desktop.windowControls.getState()`);
+  const uiState = win => run(win, `({maximized:document.querySelector('.window-controls')?.dataset.maximized,fullscreen:document.querySelector('.window-controls')?.dataset.fullscreen})`);
+  const transport = () => run(owner, `!!document.querySelector('button[aria-label="Pausar"]:not(:disabled)')`);
+  check(await run(owner, `document.querySelector('.player-window-chrome').getBoundingClientRect().height===32 && document.querySelector('.topbar').getBoundingClientRect().top===32`), 'Own 32px chrome is above the player session bar');
+  check(await run(owner, `getComputedStyle(document.querySelector('.player-window-chrome')).webkitAppRegion==='drag' && [...document.querySelectorAll('.window-controls button')].every(b=>getComputedStyle(b).webkitAppRegion==='no-drag')`), 'Native drag region excludes all own window buttons');
+  if (!windowActionsOnly) {
+  for(const [width,height] of [[360,713],[390,667],[583,925],[640,480],[360,360],[1280,720]]) {
+    owner.setContentSize(width,height);await wait(200);
+    check(await run(owner, `document.documentElement.scrollWidth===innerWidth && document.documentElement.scrollHeight===innerHeight && document.querySelector('.player-controls').getBoundingClientRect().bottom<=innerHeight`), `Chrome ${width}x${height} no app overflow and transport remains visible`);
+    await click(owner, '.equalizer-toggle');await wait(160);
+    const eq = await run(owner, `(()=>{const e=document.querySelector('.equalizer-window'),r=e.getBoundingClientRect();return {bounds:r.toJSON(),radius:getComputedStyle(e).borderRadius,columns:e.querySelectorAll('.equalizer-band').length,scrollWidth:e.scrollWidth,clientWidth:e.clientWidth,scrollHeight:e.scrollHeight,clientHeight:e.clientHeight};})()`);
+    layouts.push({width,height,equalizer:eq});
+    check(eq.columns===11 && eq.scrollWidth===eq.clientWidth, `EQ ${width}x${height} eleven columns without horizontal clipping`);
+    if(width<1000 || height<550) check(eq.bounds.top===88 && eq.bounds.left===0 && eq.bounds.right===width && eq.bounds.bottom===height && eq.radius==='0px', `EQ ${width}x${height} fills to bottom edge with zero radius below both bars`);
+    if(width<650 && height>=600) check(eq.scrollHeight<=eq.clientHeight+1, `EQ ${width}x${height} all content fits vertically`);
+    if(width===360 && height===713) writeFileSync(path.join(output,'chrome-equalizer-360x713.png'),(await owner.webContents.capturePage()).toPNG());
+    await click(owner,'.equalizer-titlebar button');
+    if(width<1000 || height<550) {
+      await click(owner,'.queue-toggle');await wait(240);
+      check(await run(owner, `document.querySelector('.queue-surface').getBoundingClientRect().top===88`), `Queue ${width}x${height} starts below both bars`);
+      await click(owner,'.queue-sheet-heading button');await wait(240);
+    }
+    if(width===360 && height===713) writeFileSync(path.join(output,'chrome-player-360x713.png'),(await owner.webContents.capturePage()).toPNG());
+  }
+  owner.setContentSize(390,667);await wait(200);
+  await click(owner,'.sidebar-open-button');
+  check(await run(owner, `document.querySelector('.sidebar').getBoundingClientRect().top===32 && !document.querySelector('.window-controls').closest('[inert]') && document.elementFromPoint(innerWidth-18,16).closest('.window-close')!==null`), 'Sidebar leaves own window controls visible and interactive');
+  await click(owner,'.sidebar-close');
+  await click(owner,'.queue-toggle');await wait(240);await click(owner,'.queue-toolbar button');
+  check(await run(owner, `(()=>{const r=document.querySelector('.track-search-dialog').getBoundingClientRect();return r.top===32 && r.bottom===innerHeight && r.width===innerWidth && document.elementFromPoint(innerWidth-18,16).closest('.window-close')!==null;})()`), 'Add songs uses full available area without covering window controls');
+  await click(owner,'.track-search-dialog .icon-button');await click(owner,'.queue-sheet-heading button');
+  }
+  const exercise = async (win,name) => {
+    await until(()=>run(win,`!!document.querySelector('.window-maximize:not(:disabled)')`), `${name} initial window state`);
+    check((await ownState(win)).maximized===win.isMaximized(),`${name} initial state comes from native window`);
+    await click(win,'.window-maximize');await until(()=>win.isMaximized(),`${name} UI maximize`);
+    await until(async()=> (await uiState(win)).maximized==='true',`${name} restore icon`);
+    check(await run(win, `!!document.querySelector('.window-maximize .lucide-copy')`),`${name} maximize changes icon to restore`);
+    await click(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} UI restore`);
+    await until(async()=> (await uiState(win)).maximized==='false',`${name} maximize icon restored`);
+    win.maximize();await until(async()=> (await uiState(win)).maximized==='true',`${name} external maximize update`);
+    check(true,`${name} external window changes synchronize UI`);
+    await click(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} restore external maximize`);
+    await click(win,'.window-minimize');await until(()=>win.isMinimized(),`${name} minimize button`);
+    check(true,`${name} own minimize button works`);win.restore();win.show();
+    await until(()=>!win.isMinimized(),`${name} native restore`);
+    win.setFullScreen(true);await until(()=>win.isFullScreen(),`${name} fullscreen`);
+    await until(async()=> (await uiState(win)).fullscreen==='true',`${name} fullscreen event`);
+    await click(win,'.window-maximize');await until(()=>!win.isFullScreen(),`${name} fullscreen exit via restore`);
+    await until(async()=> (await uiState(win)).fullscreen==='false',`${name} fullscreen UI restored`);
+    check(true,`${name} own restore exits native fullscreen`);
+    await wait(600);
+  };
+  await exercise(owner,'Player');check(await transport(),'Player window actions preserve playback');
+  if(!packaged) check((await probe(owner)).prepared===5,'Player window actions do not recreate mixer or prepared tracks');
+  await click(owner,'.visualizer-toggle');await until(()=>visual(),'visualizer created');const win=visual();
+  await until(()=>run(win,`document.querySelector('.visualizer-status-dot')?.dataset.status==='ready'`),'visualizer ready',30000);
+  await click(win,'.visualizer-pin');
+  await until(()=>run(win,`document.querySelector('.visualizer-pin').getAttribute('aria-pressed')==='true'`),'visualizer pinned for window QA');
+  win.setContentSize(360,300);await wait(200);
+  check(await run(win, `(()=>{const buttons=[...document.querySelectorAll('.visualizer-title-actions button')].map(b=>b.getBoundingClientRect()),r=document.querySelector('.visualizer-window').getBoundingClientRect();return buttons.length===5 && buttons.every(r=>r.left>=0 && r.right<=innerWidth) && document.documentElement.scrollWidth===innerWidth && r.left===0 && r.top===0 && r.right===innerWidth && r.bottom===innerHeight;})()`), 'Visualizer fills minimum window and all five header controls fit');
+  writeFileSync(path.join(output,'chrome-visualizer-360.png'),(await win.webContents.capturePage()).toPNG());
+  await exercise(win,'Visualizer');
+  check(await transport(),'Visualizer window actions preserve owner playback');
+  if(!packaged) { await until(async()=> (await probe(win)).rms>.01,'PCM resumes after all visualizer window changes');check(true,'Fresh PCM continues through both frameless windows'); }
+  await click(owner,'.window-close');await until(()=>!owner.isVisible(),'own close hides owner with visualizer open');
+  check(!owner.isDestroyed(),'Own player Close preserves audio owner while visualizer is open');
+  await click(win,'.window-close');await until(()=>!visual(),'own visualizer close');await until(()=>owner.isVisible(),'owner restored');
+  check(await transport(),'Own visualizer Close restores player without losing playback');
+  await click(owner,'.window-close');await until(()=>owner.isDestroyed(),'own player close without visualizer');
+  check(true,'Own player Close really closes window when no visualizer is open');
+}
 async function verifyVisualizerControls() {
   // Only the OS picker is simulated. Production IPC, conversion, repositories,
   // preloads, React state and real-time notice expiry remain real.
@@ -151,7 +301,7 @@ async function verifySearch(searchTracks) {
     const layout=await run(owner, `(() => {const r=s=>document.querySelector(s).getBoundingClientRect().toJSON(),d=document.querySelector('.track-search-dialog'),input=document.querySelector('.track-search-input input');input.focus();return {width:innerWidth,height:innerHeight,dialog:r('.track-search-dialog'),list:r('.track-search-results'),close:r('.track-search-dialog .icon-button'),field:r('.track-search-input'),icon:r('.track-search-input svg'),input:r('.track-search-input input'),inputShadow:getComputedStyle(input).boxShadow,inputOutline:getComputedStyle(input).outlineStyle,fieldBorder:getComputedStyle(input.parentElement).borderColor,primary:getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),scrollWidth:d.scrollWidth,clientWidth:d.clientWidth,buttons:[...d.querySelectorAll('.track-result-actions button')].map(b=>b.getBoundingClientRect().toJSON())};})()`);
     layouts.push({search:layout});
     check(layout.scrollWidth===layout.clientWidth && layout.dialog.bottom<=height && layout.close.bottom<=height && layout.list.height>0 && layout.buttons.every(b=>b.left>=layout.dialog.left && b.right<=layout.dialog.right), `search ${width}x${height} actions fit and only results scroll`);
-    if(width<=719) check(layout.dialog.left===0 && layout.dialog.top===0 && layout.dialog.width===width && layout.dialog.height===height, `search ${width}x${height} fills entire window`);
+    if(width<=719) check(layout.dialog.left===0 && layout.dialog.top===32 && layout.dialog.width===width && layout.dialog.height===height-32, `search ${width}x${height} fills area below window chrome`);
     check(layout.inputShadow==='none' && layout.inputOutline==='none' && layout.icon.left>layout.field.left && layout.icon.right<layout.field.right && await run(owner, `(() => {const f=document.querySelector('.track-search-input'),probe=document.createElement('div');probe.style.color='var(--primary)';document.body.append(probe);const ok=f.matches(':focus-within') && getComputedStyle(f).borderTopColor===getComputedStyle(probe).color;probe.remove();return ok;})()`), `search ${width}x${height} focus is on complete field including icon`);
     if([360,1280].includes(width) && height!==360) writeFileSync(path.join(output,`search-${width}x${height}.png`),(await owner.webContents.capturePage()).toPNG());
   }
@@ -184,10 +334,11 @@ app.whenReady().then(async () => {
     const data = path.join(profile, 'data'), dj = createDefaultDj({ name: 'Punk Underground', description: 'Isolated QA', prompt: 'QA', genres: ['Punk'] });
     const artwork = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><rect width="500" height="500" fill="#333d4a"/><text x="250" y="220" text-anchor="middle" fill="#f3dfad" font-family="sans-serif" font-size="48" font-weight="bold">NO USE</text><text x="250" y="280" text-anchor="middle" fill="#f3dfad" font-family="sans-serif" font-size="42">FOR A NAME</text></svg>');
     const tracks = Array.from({ length: 12 }, (_, index) => ({ id: `qa${String(index).padStart(9, '0')}`, title: index ? `Canción siguiente ${index} — título de prueba largo` : 'Let It Slide', creator: index ? `Artista ${index}` : 'No Use For A Name', canonicalUrl: `https://www.youtube.com/watch?v=qa${String(index).padStart(9, '0')}`, durationSeconds: 120, thumbnailUrl: artwork, requestedByUser: true }));
+    if(artworkOnly) Object.assign(tracks[0],{title:'Radiosurgery',creator:'New Found Glory',thumbnailUrl:liveArtwork});
     const searchTracks=Array.from({length:10},(_,index)=>({...tracks[0],id:`qs${String(index).padStart(9,'0')}`,canonicalUrl:`https://www.youtube.com/watch?v=qs${String(index).padStart(9,'0')}`,title:`Resultado ${index+1} — Canción con título largo`,creator:`Artista del catálogo ${index+1}`}));
     await new DjRepository(data).save(dj);
     await new AppStateRepository(data).save({ schemaVersion: 2, lastSelectedDjId: dj.id, languagePreference: 'es', updatedAt: new Date().toISOString() });
-    await new SessionRepository(data).saveActive({ schemaVersion: 1, sessionId: 'full-player-qa', djId: dj.id, djRevision: dj.revision, phase: 'PLAYING', queue: tracks, currentIndex: 0, positionSeconds: 0, discoveryRound: 0, savedAt: new Date().toISOString(), recoverable: true });
+    await new SessionRepository(data).saveActive({ schemaVersion: 1, sessionId: 'full-player-qa', djId: dj.id, djRevision: dj.revision, phase: 'PLAYING', queue: tracks, currentIndex: 0, positionSeconds: playerLayoutOnly?29:0, discoveryRound: 0, savedAt: new Date().toISOString(), recoverable: true });
     if (!packaged) {
       const { createServer } = await import('vite');
       server = await createServer({ configFile: path.join(__dirname, '../vite.config.ts'), server: { port: 0, strictPort: false, hmr: false } });
@@ -214,7 +365,7 @@ app.whenReady().then(async () => {
     for (const name of ['connectivity:check', 'sources:prepare', 'sources:read', 'sources:release', 'sources:cancel-playback', 'sources:search']) ipcMain.removeHandler(name);
     ipcMain.handle('connectivity:check', () => true);
     ipcMain.handle('sources:search', () => searchTracks);
-    ipcMain.handle('sources:prepare', (_event, source) => { const leaseId = crypto.randomUUID(); leases.add(leaseId); return { ...source, leaseId, byteLength: sources.length, format: 'm4a' }; });
+    ipcMain.handle('sources:prepare', async (_event, source) => { if(playerLayoutOnly) await wait(400);const leaseId = crypto.randomUUID(); leases.add(leaseId); return { ...source, leaseId, byteLength: sources.length, format: 'm4a' }; });
     ipcMain.handle('sources:read', (_event, id) => { if (!leases.has(id)) throw new Error('bad lease'); return sources; });
     ipcMain.handle('sources:release', (_event, id) => { leases.delete(id); });
     ipcMain.handle('sources:cancel-playback', () => 0);
@@ -222,25 +373,59 @@ app.whenReady().then(async () => {
     const testDisplay = screen.getAllDisplays().sort((a,b) => b.workArea.height-a.workArea.height)[0];
     owner.setPosition(testDisplay.workArea.x+16,testDisplay.workArea.y+16);
     check(await run(owner, `!document.querySelector('.hero')`), 'marketing block removed');
-    await click(owner, 'button.primary-button');
+    if(artworkOnly) {
+      await verifyArtwork();check(errors.length===0,'no renderer errors');
+      writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,artworkOnly,checks,layouts,errors},null,2));console.log(JSON.stringify({output,passed:checks.length,packaged,artworkOnly}));
+      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();finish();return;
+    }
+    if(playerLayoutOnly) await verifyPlayerLayout(true);
+    // The shell mounts before its asynchronous session repository has loaded.
+    // Wait for the real recovery action, not just the panel's initial IDLE DOM.
+    await until(() => run(owner, `document.querySelector('.now-playing')?.dataset.phase==='RESTORABLE' && !!document.querySelector('.primary-transport:not(:disabled)')`), 'saved session hydration');
+    await click(owner, '.primary-transport');
+    if(playerLayoutOnly) {
+      await until(()=>run(owner, `document.querySelector('.now-playing')?.dataset.phase==='PREPARING'`),'resume loading');
+      check(await run(owner, `document.querySelector('.now-track-copy strong')?.textContent==='Let It Slide' && document.querySelector('.primary-transport').disabled && !!document.querySelector('.primary-transport .spin') && document.querySelector('.session-discard').disabled`),'Continue preserves cover and metadata while loading, preventing duplicate actions');
+    }
     await until(() => run(owner, `!!document.querySelector('button[aria-label="Pausar"]:not(:disabled)') && document.querySelectorAll('[data-preparation="ready"]').length===4`), 'resume with four ready');
     check(true, 'real session/mixer and four-track reserve');
     if (!packaged) check((await probe(owner)).prepared === 5, 'only current plus four prepared');
+    if(playerLayoutOnly){
+      await verifyPlayerLayout(false);
+      if(!packaged) check((await probe(owner)).prepared===5,'Responsive layout never reloads mixer or prepared tracks');
+      await click(owner,'button[aria-label="Pausar"]');
+      await until(()=>run(owner, `!!document.querySelector('button[aria-label="Continuar"]:not(:disabled)')`),'pause');
+      await click(owner,'.primary-transport');
+      await until(()=>run(owner, `!!document.querySelector('button[aria-label="Pausar"]:not(:disabled)')`),'resume paused');
+      check(true,'Central transport still pauses and resumes playback');
+      await until(()=>run(owner, `(async()=> !!(await window.desktop.sessions.loadActive()))()`),'snapshot saved');
+      owner.reload();await until(()=>run(owner, `!!document.querySelector('.session-discard')`),'restored after reload');
+      await click(owner,'.session-discard');await until(()=>run(owner, `document.querySelector('.now-playing')?.dataset.phase==='IDLE'`),'discard updates UI');
+      await until(()=>run(owner, `(async()=> (await window.desktop.sessions.loadActive())===null)()`),'discard clears repository');
+      check(true,'Discard clears saved session through real IPC and repository');check(errors.length===0,'no renderer errors');
+      writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,playerLayoutOnly,checks,layouts,errors},null,2));console.log(JSON.stringify({output,passed:checks.length,packaged,playerLayoutOnly}));
+      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();finish();return;
+    }
+    if(windowChromeOnly){
+      await verifyWindowChrome();check(errors.length===0,'no renderer errors');
+      writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,windowChromeOnly,checks,layouts,errors},null,2));console.log(JSON.stringify({output,passed:checks.length,packaged,windowChromeOnly}));
+      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();finish();return;
+    }
     if(visualizerControlsOnly){
       await verifyVisualizerControls();check(errors.length===0,'no renderer errors');
       writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,visualizerControlsOnly,checks,errors},null,2));console.log(JSON.stringify({output,passed:checks.length,packaged,visualizerControlsOnly}));
-      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();app.quit();return;
+      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();finish();return;
     }
     if(eqStabilityOnly){
       await verifyEqStability();check(errors.length===0,'no renderer errors');
       writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,eqStabilityOnly,checks,layouts,errors},null,2));console.log(JSON.stringify({output,passed:checks.length,packaged,eqStabilityOnly}));
-      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();app.quit();return;
+      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();finish();return;
     }
     if(searchOnly) {
       await verifySearch(searchTracks);check(errors.length===0,'no renderer errors');
       writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,searchOnly,checks,layouts,errors},null,2));
       console.log(JSON.stringify({output,passed:checks.length,packaged,searchOnly}));
-      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();app.quit();return;
+      clearTimeout(timeout);for(const win of BrowserWindow.getAllWindows())win.destroy();await server?.close();finish();return;
     }
     for (const [width, height] of [[1280,720],[1024,600],[800,900],[800,600],[640,480],[583,925],[390,844],[390,667],[360,713],[360,360]]) {
       const current = await run(owner, `({width:innerWidth,height:innerHeight})`), outer = owner.getSize();
@@ -266,7 +451,7 @@ app.whenReady().then(async () => {
         const bounds = await run(owner, `(() => {const q=document.querySelector('.queue-surface'), c=document.querySelector('.player-controls'); return {queue:q.getBoundingClientRect().toJSON(),controls:c.getBoundingClientRect().toJSON(),visible:getComputedStyle(q).visibility};})()`);
         layouts.at(-1).openQueue = bounds;
         check(bounds.visible === 'visible' && bounds.queue.bottom <= bounds.controls.top, `queue sheet ${width}x${height} does not cover transport`);
-        check(bounds.queue.left === 0 && bounds.queue.right === width && bounds.queue.top === 56, `queue sheet ${width}x${height} full width below topbar`);
+        check(bounds.queue.left === 0 && bounds.queue.right === width && bounds.queue.top === 88, `queue sheet ${width}x${height} full width below both bars`);
         if (width===360 && height===713) writeFileSync(path.join(output, 'queue-360x713.png'), (await owner.webContents.capturePage()).toPNG());
         await click(owner, '.queue-sheet-heading button'); await wait(240);
         if (width <= 650) {
@@ -346,9 +531,13 @@ app.whenReady().then(async () => {
     await wait(200); check(errors.length===0, 'no renderer errors');
     writeFileSync(path.join(output,'result.json'),JSON.stringify({packaged,checks,layouts,errors},null,2));
     console.log(JSON.stringify({output,passed:checks.length,packaged}));
-    clearTimeout(timeout); for (const win of BrowserWindow.getAllWindows()) win.destroy(); await server?.close(); app.quit();
+    clearTimeout(timeout); for (const win of BrowserWindow.getAllWindows()) win.destroy(); await server?.close(); finish();
   } catch (error) {
     console.error(error); writeFileSync(path.join(output,'result.json'),JSON.stringify({checks,layouts,errors,failure:String(error)},null,2));
+    if(owner && !owner.isDestroyed()) {
+      writeFileSync(path.join(output,'failure.png'),(await owner.webContents.capturePage()).toPNG());
+      writeFileSync(path.join(output,'failure-ui.txt'),await run(owner,`document.body.innerText`));
+    }
     console.error('Evidence:',output); clearTimeout(timeout); await server?.close(); app.exit(1);
   }
 });

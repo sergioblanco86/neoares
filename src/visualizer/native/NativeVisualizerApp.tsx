@@ -4,6 +4,7 @@ import { VisualizerWindow } from "../components/VisualizerWindow";
 import { VisualizerErrorBoundary } from "../components/VisualizerErrorBoundary";
 import { useI18n } from "../../i18n/i18n";
 import { RemoteAudioSource } from "./remote-audio";
+import { WindowControls } from "../../components/WindowControls";
 
 export function NativeVisualizerApp() {
   const { t } = useI18n();
@@ -31,7 +32,8 @@ export function NativeVisualizerApp() {
     return () => { next.dispose(); setSource(null); };
   }, [connection, rate]);
   const close = () => { void window.desktop!.nativeVisualizer!.close(); };
-  if (failed) return <div className="native-visualizer-wait" role="alert">{t("visualizer.failed")}<button onClick={() => { setFailed(false); void window.desktop!.nativeVisualizer!.ready().catch(() => setFailed(true)); }} type="button">{t("visualizer.retry")}</button><button onClick={close} type="button">{t("visualizer.close")}</button></div>;
-  if (!state || !source) return <div className="native-visualizer-wait" role="status">{t("visualizer.loading")}<button onClick={close} type="button">{t("visualizer.close")}</button></div>;
+  const waitChrome = <header className="native-visualizer-wait-chrome"><span>NeoAres</span><WindowControls /></header>;
+  if (failed) return <>{waitChrome}<div className="native-visualizer-wait" role="alert">{t("visualizer.failed")}<button onClick={() => { setFailed(false); void window.desktop!.nativeVisualizer!.ready().catch(() => setFailed(true)); }} type="button">{t("visualizer.retry")}</button><button onClick={close} type="button">{t("visualizer.close")}</button></div></>;
+  if (!state || !source) return <>{waitChrome}<div className="native-visualizer-wait" role="status">{t("visualizer.loading")}<button onClick={close} type="button">{t("visualizer.close")}</button></div></>;
   return <VisualizerErrorBoundary open onClose={close} failedLabel={t("visualizer.failed")} retryLabel={t("visualizer.retry")} closeLabel={t("visualizer.close")}><VisualizerWindow native mixer={source} open track={state.track} playing={state.playing} positionSeconds={state.positionSeconds} durationSeconds={state.durationSeconds} onClose={close} /></VisualizerErrorBoundary>;
 }

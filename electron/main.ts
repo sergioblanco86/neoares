@@ -13,6 +13,7 @@ import { resolveLocale } from "../src/i18n/locale";
 import { playbackRetention } from "../src/domain/playback-retention";
 import { EqualizerRepository } from "./equalizer-repository";
 import { NativeVisualizerHost } from "./native-visualizer";
+import { attachWindowControls, registerWindowControls } from "./window-controls";
 import type { EqualizerSettings } from "../src/shared/contracts";
 import type { AppState, CachePolicy, DjProfile, LoudnessAnalysis, MediaControlCommand, PopularityLevel, SessionSnapshot, SourceRequestScope, SupportedLocale, VisualizerPresetImportRequest, VisualizerPresentation, VisualizerSettings, YouTubeSource } from "../src/shared/contracts";
 
@@ -52,6 +53,8 @@ function createWindow(sources: SourceService): void {
     minHeight: 360,
     useContentSize: true,
     title: "NeoAres",
+    frame: false,
+    autoHideMenuBar: true,
     backgroundColor: "#101114",
     show: false,
     webPreferences: {
@@ -65,6 +68,7 @@ function createWindow(sources: SourceService): void {
   });
 
   const createdWindow = mainWindow;
+  attachWindowControls(createdWindow);
   const [outerWidth, outerHeight] = createdWindow.getSize();
   const [contentWidth, contentHeight] = createdWindow.getContentSize();
   createdWindow.setMinimumSize(360 + outerWidth - contentWidth, 360 + outerHeight - contentHeight);
@@ -203,6 +207,11 @@ if (!hasSingleInstanceLock) {
 } else app.whenReady().then(() => {
   return migrateLegacyProfiles();
 }).then(async () => {
+  registerWindowControls(event => {
+    if (event.sender === mainWindow?.webContents) return mainWindow;
+    if (event.sender === nativeVisualizer?.window?.webContents) return nativeVisualizer.window;
+    return null;
+  });
   const userDataPath = app.getPath("userData");
   const dataPath = path.join(userDataPath, "data");
   const repository = new DjRepository(dataPath);

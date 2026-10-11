@@ -1,0 +1,345 @@
+{
+  "packaged": false,
+  "windowChromeOnly": true,
+  "checks": [
+    {
+      "name": "marketing block removed",
+      "passed": true
+    },
+    {
+      "name": "real session/mixer and four-track reserve",
+      "passed": true
+    },
+    {
+      "name": "only current plus four prepared",
+      "passed": true
+    },
+    {
+      "name": "Own 32px chrome is above the player session bar",
+      "passed": true
+    },
+    {
+      "name": "Native drag region excludes all own window buttons",
+      "passed": true
+    },
+    {
+      "name": "Chrome 360x713 no app overflow and transport remains visible",
+      "passed": true
+    },
+    {
+      "name": "EQ 360x713 eleven columns without horizontal clipping",
+      "passed": true
+    },
+    {
+      "name": "EQ 360x713 fills to bottom edge with zero radius below both bars",
+      "passed": true
+    },
+    {
+      "name": "EQ 360x713 all content fits vertically",
+      "passed": true
+    },
+    {
+      "name": "Queue 360x713 starts below both bars",
+      "passed": true
+    },
+    {
+      "name": "Chrome 390x667 no app overflow and transport remains visible",
+      "passed": true
+    },
+    {
+      "name": "EQ 390x667 eleven columns without horizontal clipping",
+      "passed": true
+    },
+    {
+      "name": "EQ 390x667 fills to bottom edge with zero radius below both bars",
+      "passed": true
+    },
+    {
+      "name": "EQ 390x667 all content fits vertically",
+      "passed": true
+    },
+    {
+      "name": "Queue 390x667 starts below both bars",
+      "passed": true
+    },
+    {
+      "name": "Chrome 583x925 no app overflow and transport remains visible",
+      "passed": true
+    },
+    {
+      "name": "EQ 583x925 eleven columns without horizontal clipping",
+      "passed": true
+    },
+    {
+      "name": "EQ 583x925 fills to bottom edge with zero radius below both bars",
+      "passed": true
+    },
+    {
+      "name": "EQ 583x925 all content fits vertically",
+      "passed": true
+    },
+    {
+      "name": "Queue 583x925 starts below both bars",
+      "passed": true
+    },
+    {
+      "name": "Chrome 640x480 no app overflow and transport remains visible",
+      "passed": true
+    },
+    {
+      "name": "EQ 640x480 eleven columns without horizontal clipping",
+      "passed": true
+    },
+    {
+      "name": "EQ 640x480 fills to bottom edge with zero radius below both bars",
+      "passed": true
+    },
+    {
+      "name": "Queue 640x480 starts below both bars",
+      "passed": true
+    },
+    {
+      "name": "Chrome 360x360 no app overflow and transport remains visible",
+      "passed": true
+    },
+    {
+      "name": "EQ 360x360 eleven columns without horizontal clipping",
+      "passed": true
+    },
+    {
+      "name": "EQ 360x360 fills to bottom edge with zero radius below both bars",
+      "passed": true
+    },
+    {
+      "name": "Queue 360x360 starts below both bars",
+      "passed": true
+    },
+    {
+      "name": "Chrome 1280x720 no app overflow and transport remains visible",
+      "passed": true
+    },
+    {
+      "name": "EQ 1280x720 eleven columns without horizontal clipping",
+      "passed": true
+    },
+    {
+      "name": "Sidebar leaves own window controls visible and interactive",
+      "passed": true
+    },
+    {
+      "name": "Add songs uses full available area without covering window controls",
+      "passed": true
+    },
+    {
+      "name": "Player initial state comes from native window",
+      "passed": true
+    },
+    {
+      "name": "Player maximize changes icon to restore",
+      "passed": true
+    },
+    {
+      "name": "Player external window changes synchronize UI",
+      "passed": true
+    },
+    {
+      "name": "Player own minimize button works",
+      "passed": true
+    },
+    {
+      "name": "Player own restore exits native fullscreen",
+      "passed": true
+    },
+    {
+      "name": "Player window actions preserve playback",
+      "passed": true
+    },
+    {
+      "name": "Player window actions do not recreate mixer or prepared tracks",
+      "passed": true
+    },
+    {
+      "name": "Visualizer fills minimum window and all five header controls fit",
+      "passed": true
+    },
+    {
+      "name": "Visualizer initial state comes from native window",
+      "passed": true
+    },
+    {
+      "name": "Visualizer maximize changes icon to restore",
+      "passed": true
+    },
+    {
+      "name": "Visualizer external window changes synchronize UI",
+      "passed": true
+    },
+    {
+      "name": "Visualizer own minimize button works",
+      "passed": true
+    },
+    {
+      "name": "Visualizer own restore exits native fullscreen",
+      "passed": true
+    },
+    {
+      "name": "Visualizer window actions preserve owner playback",
+      "passed": true
+    },
+    {
+      "name": "Fresh PCM continues through both frameless windows",
+      "passed": true
+    },
+    {
+      "name": "Own player Close preserves audio owner while visualizer is open",
+      "passed": true
+    },
+    {
+      "name": "Own visualizer Close restores player without losing playback",
+      "passed": true
+    },
+    {
+      "name": "Own player Close really closes window when no visualizer is open",
+      "passed": true
+    },
+    {
+      "name": "no renderer errors",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "width": 360,
+      "height": 713,
+      "equalizer": {
+        "bounds": {
+          "x": 0,
+          "y": 88,
+          "width": 360,
+          "height": 625,
+          "top": 88,
+          "right": 360,
+          "bottom": 713,
+          "left": 0
+        },
+        "radius": "0px",
+        "columns": 11,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "scrollHeight": 623,
+        "clientHeight": 623
+      }
+    },
+    {
+      "width": 390,
+      "height": 667,
+      "equalizer": {
+        "bounds": {
+          "x": 0,
+          "y": 88,
+          "width": 390,
+          "height": 579,
+          "top": 88,
+          "right": 390,
+          "bottom": 667,
+          "left": 0
+        },
+        "radius": "0px",
+        "columns": 11,
+        "scrollWidth": 388,
+        "clientWidth": 388,
+        "scrollHeight": 577,
+        "clientHeight": 577
+      }
+    },
+    {
+      "width": 583,
+      "height": 925,
+      "equalizer": {
+        "bounds": {
+          "x": 0,
+          "y": 88,
+          "width": 583,
+          "height": 837,
+          "top": 88,
+          "right": 583,
+          "bottom": 925,
+          "left": 0
+        },
+        "radius": "0px",
+        "columns": 11,
+        "scrollWidth": 581,
+        "clientWidth": 581,
+        "scrollHeight": 835,
+        "clientHeight": 835
+      }
+    },
+    {
+      "width": 640,
+      "height": 480,
+      "equalizer": {
+        "bounds": {
+          "x": 0,
+          "y": 88,
+          "width": 640,
+          "height": 392,
+          "top": 88,
+          "right": 640,
+          "bottom": 480,
+          "left": 0
+        },
+        "radius": "0px",
+        "columns": 11,
+        "scrollWidth": 638,
+        "clientWidth": 638,
+        "scrollHeight": 473,
+        "clientHeight": 390
+      }
+    },
+    {
+      "width": 360,
+      "height": 360,
+      "equalizer": {
+        "bounds": {
+          "x": 0,
+          "y": 88,
+          "width": 360,
+          "height": 272,
+          "top": 88,
+          "right": 360,
+          "bottom": 360,
+          "left": 0
+        },
+        "radius": "0px",
+        "columns": 11,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "scrollHeight": 529,
+        "clientHeight": 270
+      }
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "equalizer": {
+        "bounds": {
+          "x": 12,
+          "y": 76,
+          "width": 740,
+          "height": 539,
+          "top": 76,
+          "right": 752,
+          "bottom": 615,
+          "left": 12
+        },
+        "radius": "14px",
+        "columns": 11,
+        "scrollWidth": 738,
+        "clientWidth": 738,
+        "scrollHeight": 537,
+        "clientHeight": 537
+      }
+    }
+  ],
+  "errors": []
+}

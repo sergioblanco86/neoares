@@ -1,6 +1,13 @@
 import type { TranslationCatalog } from "./es";
 
 export const en = {
+  "window.controls": "Window controls",
+  "window.minimize": "Minimize window",
+  "window.maximize": "Maximize window",
+  "window.restore": "Restore window",
+  "window.close": "Close window",
+  "window.exitFullscreen": "Exit fullscreen",
+  "window.failed": "Window action failed. Try again.",
   "common.close": "Close",
   "common.cancel": "Cancel",
   "common.retry": "Retry",

@@ -1,4 +1,7 @@
 export const IPC_CHANNELS = {
+  windowControlsState: "window-controls:get-state",
+  windowControlsCommand: "window-controls:command",
+  windowControlsChanged: "window-controls:changed",
   nativeVisualizerOpen: "native-visualizer:open",
   nativeVisualizerClose: "native-visualizer:close",
   nativeVisualizerReady: "native-visualizer:ready",

@@ -3,7 +3,8 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const { mkdtempSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
-const output = mkdtempSync(path.join(tmpdir(), "neoares-visualizer-proof-"));
+const output = mkdtempSync(path.join(process.env.NEOARES_QA_OUTPUT || tmpdir(), "neoares-visualizer-proof-"));
+writeFileSync(path.join(output, "environment.json"), JSON.stringify({ platform: process.platform, arch: process.arch, electron: process.versions.electron, chromium: process.versions.chrome }, null, 2));
 app.setPath("userData", path.join(output, "profile"));
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.whenReady().then(async () => {

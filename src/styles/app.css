@@ -1810,7 +1810,7 @@ button:disabled {
 .visualizer-fullscreen .visualizer-track { bottom: 76px; }
 
 @media (max-width: 640px) {
-  .visualizer-window:not(.visualizer-fullscreen) { left: 8px !important; top: auto !important; bottom: 8px; min-width: 0; width: calc(100vw - 16px) !important; height: min(62vh, 460px) !important; resize: none; }
+  .visualizer-window:not(.visualizer-native):not(.visualizer-fullscreen) { left: 8px !important; top: auto !important; bottom: 8px; min-width: 0; width: calc(100vw - 16px) !important; height: min(62vh, 460px) !important; resize: none; }
 }
 
 .volume-button {

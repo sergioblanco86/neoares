@@ -467,6 +467,10 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
 
   async function togglePlayback(): Promise<void> {
     if (transitioningRef.current) return;
+    if (phaseRef.current === "RESTORABLE") {
+      await continueRestoredSession();
+      return;
+    }
     if (phaseRef.current === "PAUSED") {
       await resumePlayback();
       return;
@@ -725,7 +729,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
   const running = phase === "PLAYING" || phase === "PAUSED" || phase === "TRANSITIONING" || phase === "RECOVERING";
   const audible = running;
   const hasLoadedCurrent = player.durationSeconds > 0 && Boolean(queue[currentIndex]);
-  const hasRestorableCurrent = phase === "RESTORABLE" && Boolean(queue[currentIndex]);
+  const hasRestorableCurrent = (phase === "RESTORABLE" || (phase === "PREPARING" && restorableSnapshot !== null)) && Boolean(queue[currentIndex]);
   const current = hasLoadedCurrent || hasRestorableCurrent ? queue[currentIndex] : null;
   const upcoming = hasLoadedCurrent || hasRestorableCurrent ? getUpcoming(queue, currentIndex) : queue;
   const queueEditingDisabled = !running || !nextReady || transportBusy || phase === "TRANSITIONING" || phase === "RECOVERING" || queueAction !== null;
@@ -851,19 +855,14 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
         </div>
         <div className="autopilot-actions">
           <SessionStatus phase={phase} />
-          {phase === "RESTORABLE" ? (
-            <>
-              <button className="secondary-button" onClick={() => void discardRestoredSession()} type="button">{t("session.discard")}</button>
-              <button className="primary-button" onClick={() => void continueRestoredSession()} type="button"><Play size={16} fill="currentColor" /> {t("session.continue")}</button>
-            </>
-          ) : running ? (
-            <button className="secondary-button" onClick={stop} type="button"><Square size={14} fill="currentColor" /> {t("session.end")}</button>
-          ) : (
-            <button className="primary-button" disabled={!dj || busy} onClick={() => void start()} type="button">
+          {running ? (
+            <button aria-label={t("session.end")} title={t("session.end")} className="secondary-button session-stop" onClick={stop} type="button"><Square size={14} fill="currentColor" /></button>
+          ) : !hasRestorableCurrent ? (
+            <button aria-label={busy ? t("session.preparing") : t("session.start")} title={t("session.start")} className="primary-button session-start" disabled={!dj || busy} onClick={() => void start()} type="button">
               {busy ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}
               {phase === "DISCOVERING" ? t("session.searchingMusic") : phase === "PREPARING" ? t("session.preparingDecks") : t("session.start")}
             </button>
-          )}
+          ) : null}
         </div>
       </div>
   );
@@ -876,19 +875,20 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
       {queueError ? <div className="session-error queue-error" role="alert"><CircleAlert size={16} /><span>{queueError}</span></div> : null}
 
       <div className="autopilot-body" ref={bodyRef}>
-        <div className={`now-playing ${audible ? "active" : ""}`}>
+        <div className={`now-playing ${audible ? "active" : ""}`} data-phase={phase} data-restoring={hasRestorableCurrent}>
           <div className="player-content">
           <div className="now-playing-label"><Radio size={15} /><span>{phase === "RESTORABLE" ? t("session.saved") : phase === "RECOVERING" ? t("session.recoveringContinuity") : audible ? phase === "PAUSED" ? t("session.paused") : t("session.nowPlaying") : busy ? t("session.preparingFirst") : t("session.stopped")}</span></div>
           {current ? (
             <div className="now-track">
-              <TrackArtwork className="now-track-artwork" track={current} />
+              <TrackArtwork className="now-track-artwork" quality="cover" track={current} />
               <div className="now-track-copy"><strong>{displayTitle(current.title, t)}</strong><span>{displayCreator(current.creator, t)}</span></div>
               <time>{player.bpm ? `${player.bpm} BPM` : formatDuration(current.durationSeconds)}</time>
             </div>
           ) : (
             <p>{t("session.startHint")}</p>
           )}
-          <div className="player-waveform">
+          <div className={`player-waveform${player.waveform.length ? "" : " waveform-empty"}`}>
+            {!player.waveform.length ? <span aria-hidden="true" className="saved-track-progress" style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }} /> : null}
             <div aria-hidden="true" className="waveform-bars">
               {player.waveform.map((height, index) => <i className={index / player.waveform.length <= progress ? "played" : ""} key={index} style={{ height: `${Math.round(height * 100)}%` }} />)}
             </div>
@@ -913,7 +913,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
           <div className="player-controls" ref={controlsRef} aria-label={t("player.controls")}>
             <div className="transport-row">
             <button aria-label={t("player.back")} className="transport-button" disabled={!audible || transportBusy || phase === "TRANSITIONING" || queueAction !== null} onClick={handleBackCommand} title={t("player.backShortcut")} type="button"><SkipBack size={20} fill="currentColor" /></button>
-            <button aria-label={phase === "PAUSED" ? t("player.resume") : t("player.pause")} className="transport-button primary-transport" disabled={!audible || transportBusy} onClick={() => void togglePlayback()} title={t("player.pauseShortcut")} type="button">{phase === "PAUSED" ? <Play size={22} fill="currentColor" /> : <Pause size={22} fill="currentColor" />}</button>
+            <button aria-label={hasRestorableCurrent ? t("session.continue") : phase === "PAUSED" ? t("player.resume") : t("player.pause")} aria-busy={busy} className={`transport-button primary-transport${hasRestorableCurrent ? " resume-transport" : ""}`} disabled={(!audible && !hasRestorableCurrent) || transportBusy || busy} onClick={() => void togglePlayback()} title={hasRestorableCurrent ? t("session.continue") : t("player.pauseShortcut")} type="button">{busy ? <LoaderCircle className="spin" size={22} /> : hasRestorableCurrent || phase === "PAUSED" ? <Play size={22} fill="currentColor" /> : <Pause size={22} fill="currentColor" />}{hasRestorableCurrent ? <span>{t("session.continue")}</span> : null}</button>
             <button aria-label={t("player.nextAndMix")} className="transport-button" disabled={!running || !nextReady || transportBusy || phase === "PAUSED" || queueAction !== null} onClick={() => void advance()} title={t("player.nextShortcut")} type="button"><SkipForward size={20} fill="currentColor" /></button>
             </div>
             <div className="volume-control">
@@ -924,7 +924,7 @@ export function AutonomousDjPanel({ dj }: { dj: DjProfile | null }) {
               <button aria-label={t("equalizer.open")} aria-pressed={equalizerOpen} className={`transport-button equalizer-toggle${equalizer.settings.enabled ? " active" : ""}`} onClick={() => { setQueueOpen(false); setEqualizerOpen(true); }} title={t("equalizer.title")} type="button"><SlidersHorizontal size={19} /></button>
               <button aria-label={t("visualizer.open")} aria-pressed={visualizer.open} className="transport-button visualizer-toggle" onClick={() => void visualizer.show()} title={`${t("visualizer.title")} · V`} type="button"><AudioWaveform size={19} /></button>
               <button ref={queueToggleRef} aria-label={t("queue.upNext")} aria-expanded={queueOpen} aria-controls="upcoming-sheet" className="transport-button queue-toggle" onClick={() => setQueueOpen(value => !value)} title={`${t("queue.upNext")} · Q`} type="button"><ListMusic size={19} /></button>
-              <span className="reserve-summary">{t("session.reserveShort", { count: upcoming.slice(0, 4).filter(track => preparationStatuses[track.id] === "ready").length })}</span>
+              {hasRestorableCurrent ? <button className="secondary-button session-discard" disabled={busy} onClick={() => void discardRestoredSession()} type="button">{t("session.discard")}</button> : <span className="reserve-summary">{t("session.reserveShort", { count: upcoming.slice(0, 4).filter(track => preparationStatuses[track.id] === "ready").length })}</span>}
             </div>
           </div>
         </div>

@@ -20,7 +20,8 @@ export function EqualizerWindow({ open, onClose, controller }: { open: boolean; 
 
   function bounded(x: number, y: number) {
     const rect = panel.current?.getBoundingClientRect();
-    return { x: Math.max(12, Math.min(x, window.innerWidth - (rect?.width ?? 740) - 12)), y: Math.max(12, Math.min(y, window.innerHeight - (rect?.height ?? 460) - 12)) };
+    const minTop = (document.querySelector(".player-window-chrome")?.getBoundingClientRect().bottom ?? 0) + 12;
+    return { x: Math.max(12, Math.min(x, window.innerWidth - (rect?.width ?? 740) - 12)), y: Math.max(minTop, Math.min(y, window.innerHeight - (rect?.height ?? 460) - 12)) };
   }
 
   useEffect(() => {

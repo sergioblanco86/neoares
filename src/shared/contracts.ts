@@ -243,6 +243,7 @@ export type CurationWeights = {
 };
 
 export type DesktopApi = {
+  windowControls?: import("./window-controls").WindowControlsApi;
   nativeVisualizer?: import("./native-visualizer").NativeVisualizerApi;
   platform: NodeJS.Platform;
   locale: {

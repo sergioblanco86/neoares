@@ -1,0 +1,95 @@
+{
+  "packaged": false,
+  "artworkOnly": true,
+  "checks": [
+    {
+      "name": "marketing block removed",
+      "passed": true
+    },
+    {
+      "name": "Saved 120px source renders real 1425px original without metadata migration",
+      "passed": true
+    },
+    {
+      "name": "Queue keeps original 120px miniature, not full-resolution download",
+      "passed": true
+    },
+    {
+      "name": "HTTP/network failure of original uses known thumbnail without a broken image",
+      "passed": true
+    },
+    {
+      "name": "Unavailable artwork renders intentional music icon, no failed img",
+      "passed": true
+    },
+    {
+      "name": "New mount retries original after previous failures",
+      "passed": true
+    },
+    {
+      "name": "High-resolution cover survives real session recovery and playback",
+      "passed": true
+    },
+    {
+      "name": "Changing song replaces previous cover without stale fallback state",
+      "passed": true
+    },
+    {
+      "name": "no renderer errors",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "original": {
+        "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=s0",
+        "width": 1425,
+        "height": 1425,
+        "complete": true,
+        "loading": "eager"
+      }
+    },
+    {
+      "miniature": {
+        "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=w120-h120-l90-rj",
+        "width": 120,
+        "height": 120,
+        "complete": true,
+        "loading": "lazy"
+      }
+    },
+    {
+      "imageRequests": [
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=s0?neoares-qa=high",
+          "cancel": true
+        },
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=w120-h120-l90-rj?neoares-qa=high",
+          "cancel": false
+        },
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=s0?neoares-qa=all",
+          "cancel": true
+        },
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=w120-h120-l90-rj?neoares-qa=all",
+          "cancel": true
+        },
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=w120-h120-l90-rj?neoares-qa=all",
+          "cancel": true
+        },
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=s0?neoares-qa=none",
+          "cancel": false
+        },
+        {
+          "url": "https://yt3.googleusercontent.com/xHSL5iLIP9LNCLYTOohkCICm-zJFHnZE643syvOf5qmcqwIOechj0P2K9hZoSDQ-mQmm7NLER91e3vnB=w120-h120-l90-rj?neoares-qa=none",
+          "cancel": false
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

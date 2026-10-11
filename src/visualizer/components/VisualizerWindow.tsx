@@ -9,6 +9,7 @@ import { resolveVisualizerShortcut } from "../domain/visualizer-shortcuts";
 import { PresetNavigator } from "../domain/preset-navigator";
 import { VisualizerController } from "../visualizer-controller";
 import type { RemoteAudioSource } from "../native/remote-audio";
+import { WindowControls } from "../../components/WindowControls";
 
 type PresetEntry = VisualizerPresetDescriptor & { definition?: unknown };
 type Geometry = Pick<VisualizerPresentation, "x" | "y" | "width" | "height">;
@@ -218,7 +219,7 @@ export function VisualizerWindow({ mixer, native = false, open, onClose, track, 
       <div className="visualizer-title-actions">
         <button className="visualizer-pin" aria-pressed={pinned} title={t(pinned ? "visualizer.unpinControls" : "visualizer.pinControls")} aria-label={t(pinned ? "visualizer.unpinControls" : "visualizer.pinControls")} onClick={() => setPinned(value => !value)} type="button">{pinned ? <Pin size={16} /> : <PinOff size={16} />}</button>
         <button title={fullscreen ? t("visualizer.exitFullscreen") : t("visualizer.fullscreen")} aria-label={fullscreen ? t("visualizer.exitFullscreen") : t("visualizer.fullscreen")} onClick={() => void toggleFullscreen()} type="button">{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
-        <button title={t("visualizer.close")} aria-label={t("visualizer.close")} onClick={close} type="button"><X size={18} /></button>
+        {native && window.desktop?.windowControls ? <WindowControls /> : <button title={t("visualizer.close")} aria-label={t("visualizer.close")} onClick={close} type="button"><X size={18} /></button>}
       </div>
     </header>
     <div className="visualizer-stage">

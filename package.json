@@ -1,7 +1,7 @@
 {
   "name": "neoares",
   "productName": "NeoAres",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "DJ privado de escritorio con curaduría y mezcla local desde un catálogo musical en línea.",
