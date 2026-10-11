@@ -1,14 +1,31 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SourceService } from "./source-service";
+
+// Execute actual child processes on both Windows and POSIX. Test fixtures are
+// Node scripts, not shell/shebang executables (which Windows cannot spawn).
+const fixtureTools = vi.hoisted(() => new Set<string>());
+vi.mock("node:child_process", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, spawn: (executable: string, args: string[], options: import("node:child_process").SpawnOptions) =>
+    fixtureTools.has(executable) ? actual.spawn(process.execPath, [executable, ...args], options) : actual.spawn(executable, args, options) };
+});
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
+  fixtureTools.clear();
 });
+
+async function tool(directory: string, name: string, source: string): Promise<string> {
+  const executable = path.join(directory, `${name}.cjs`);
+  await writeFile(executable, source);
+  fixtureTools.add(executable);
+  return executable;
+}
 
 describe("SourceService.prepare", () => {
   it("reuses a cached audio file without downloading it again", async () => {
@@ -49,14 +66,13 @@ describe("SourceService.prepare", () => {
 
   it("coalesces concurrent preparation for the same source but gives each reader an independent lease", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "neoares-source-single-flight-")); temporaryDirectories.push(directory);
-    const executable = path.join(directory, "download-tool"), audioPath = path.join(directory, "oWBf9hfW_4Y.m4a"), callPath = path.join(directory, "calls.txt");
-    await writeFile(executable, `#!/usr/bin/env node
+    const audioPath = path.join(directory, "oWBf9hfW_4Y.m4a"), callPath = path.join(directory, "calls.txt");
+    const executable = await tool(directory, "download-tool", `
 const fs = require('node:fs');
 fs.appendFileSync(${JSON.stringify(callPath)}, 'call\\n');
 fs.writeFileSync(${JSON.stringify(audioPath)}, Buffer.alloc(2048, 7));
 console.log(${JSON.stringify(audioPath)});
 `);
-    await chmod(executable, 0o700);
     const service = new SourceService(directory, executable);
     const source = { id: "oWBf9hfW_4Y", canonicalUrl: "https://www.youtube.com/watch?v=oWBf9hfW_4Y", title: "Test", creator: "Test", durationSeconds: 180, thumbnailUrl: null };
     const [first, second] = await Promise.all([service.prepare(source, "playback"), service.prepare(source, "playback")]);
@@ -71,12 +87,10 @@ describe("SourceService.searchMany", () => {
   it("groups multiple queries returned by one executable invocation", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "neoares-search-"));
     temporaryDirectories.push(directory);
-    const executable = path.join(directory, "catalog-tool");
-    await writeFile(executable, `#!/bin/sh
-printf '%s\\n' '{"id":"track-a","title":"Track A","uploader":"Artist A","duration":180,"playlist_id":"artist one"}'
-printf '%s\\n' '{"id":"track-b","title":"Track B","uploader":"Artist B","duration":200,"playlist_id":"artist two"}'
+    const executable = await tool(directory, "catalog-tool", `
+console.log('{"id":"track-a","title":"Track A","uploader":"Artist A","duration":180,"playlist_id":"artist one"}');
+console.log('{"id":"track-b","title":"Track B","uploader":"Artist B","duration":200,"playlist_id":"artist two"}');
 `);
-    await chmod(executable, 0o700);
     const service = new SourceService(directory, executable);
 
     const groups = await service.searchMany(["artist one", "artist two"], 6);
@@ -87,12 +101,10 @@ printf '%s\\n' '{"id":"track-b","title":"Track B","uploader":"Artist B","duratio
   it("keeps valid partial search output when the executable exits with an error", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "neoares-search-"));
     temporaryDirectories.push(directory);
-    const executable = path.join(directory, "partial-catalog-tool");
-    await writeFile(executable, `#!/bin/sh
-printf '%s\\n' '{"id":"track-a","title":"Track A","uploader":"Artist A","duration":180,"playlist_id":"artist one"}'
-exit 1
+    const executable = await tool(directory, "partial-catalog-tool", `
+console.log('{"id":"track-a","title":"Track A","uploader":"Artist A","duration":180,"playlist_id":"artist one"}');
+process.exitCode = 1;
 `);
-    await chmod(executable, 0o700);
     const service = new SourceService(directory, executable);
 
     const groups = await service.searchMany(["artist one", "artist two"], 6);
@@ -112,11 +124,8 @@ describe("SourceService cancellation", () => {
   it("cancels an in-flight preparation process", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "neoares-cancel-"));
     temporaryDirectories.push(directory);
-    const executable = path.join(directory, "slow-media-tool");
-    await writeFile(executable, `#!/bin/sh
-sleep 10
-`);
-    await chmod(executable, 0o700);
+    const ready = path.join(directory, "ready");
+    const executable = await tool(directory, "slow-media-tool", `require('node:fs').writeFileSync(${JSON.stringify(ready)}, 'ready'); setTimeout(() => {}, 10000);`);
     const service = new SourceService(directory, executable);
     const preparation = service.prepare({
       id: "oWBf9hfW_4Y",
@@ -127,32 +136,36 @@ sleep 10
       thumbnailUrl: null,
     }, "playback");
 
-    await waitForSpawn();
+    const rejected = expect(preparation).rejects.toThrow();
+    await waitForSpawn(ready);
 
     expect(service.cancelPlayback()).toBe(1);
-    await expect(preparation).rejects.toThrow();
+    await rejected;
     expect(service.cancelPlayback()).toBe(0);
   });
 
   it("keeps user searches running when preparation is cancelled", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "neoares-cancel-"));
     temporaryDirectories.push(directory);
-    const executable = path.join(directory, "slow-search-tool");
-    await writeFile(executable, `#!/bin/sh
-sleep 10
-`);
-    await chmod(executable, 0o700);
+    const ready = path.join(directory, "ready");
+    const executable = await tool(directory, "slow-search-tool", `require('node:fs').writeFileSync(${JSON.stringify(ready)}, 'ready'); setTimeout(() => {}, 10000);`);
     const service = new SourceService(directory, executable);
     const search = service.searchMany(["salsa"], 1);
 
-    await waitForSpawn();
+    const rejected = expect(search).rejects.toThrow();
+    await waitForSpawn(ready);
 
     expect(service.cancelPlayback()).toBe(0);
     expect(service.cancelAll()).toBe(1);
-    await expect(search).rejects.toThrow();
+    await rejected;
   });
 });
 
-function waitForSpawn(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 50));
+async function waitForSpawn(marker: string): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < 4000) {
+    try { await readFile(marker); return; } catch { /* Wait for actual process startup. */ }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error("Test fixture process did not start");
 }

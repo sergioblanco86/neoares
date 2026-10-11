@@ -100,6 +100,10 @@ async function verifyPlayerLayout(saved) {
   check(await run(owner, `(()=>{const title=document.querySelector('.topbar-context strong'),old=title.textContent;title.textContent='Una sesión de música con un nombre extremadamente largo';const r=title.getBoundingClientRect(),a=document.querySelector('.autopilot-actions').getBoundingClientRect();const valid=r.width>=100 && r.right<=a.left+1 && document.documentElement.scrollWidth===innerWidth;title.textContent=old;return valid;})()`),`${saved?'Saved':'Playing'} long DJ name truncates without displacing actions`);
 }
 async function verifyWindowChrome() {
+  const press = async (win, selector) => {
+    await until(() => run(win, `!!document.querySelector(${JSON.stringify(selector + ':not(:disabled)')})`), 'window action acknowledged before next click');
+    await click(win, selector);
+  };
   const ownState = win => run(win, `window.desktop.windowControls.getState()`);
   const uiState = win => run(win, `({maximized:document.querySelector('.window-controls')?.dataset.maximized,fullscreen:document.querySelector('.window-controls')?.dataset.fullscreen})`);
   const transport = () => run(owner, `!!document.querySelector('button[aria-label="Pausar"]:not(:disabled)')`);
@@ -135,20 +139,20 @@ async function verifyWindowChrome() {
   const exercise = async (win,name) => {
     await until(()=>run(win,`!!document.querySelector('.window-maximize:not(:disabled)')`), `${name} initial window state`);
     check((await ownState(win)).maximized===win.isMaximized(),`${name} initial state comes from native window`);
-    await click(win,'.window-maximize');await until(()=>win.isMaximized(),`${name} UI maximize`);
+    await press(win,'.window-maximize');await until(()=>win.isMaximized(),`${name} UI maximize`);
     await until(async()=> (await uiState(win)).maximized==='true',`${name} restore icon`);
     check(await run(win, `!!document.querySelector('.window-maximize .lucide-copy')`),`${name} maximize changes icon to restore`);
-    await click(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} UI restore`);
+    await press(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} UI restore`);
     await until(async()=> (await uiState(win)).maximized==='false',`${name} maximize icon restored`);
     win.maximize();await until(async()=> (await uiState(win)).maximized==='true',`${name} external maximize update`);
     check(true,`${name} external window changes synchronize UI`);
-    await click(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} restore external maximize`);
-    await click(win,'.window-minimize');await until(()=>win.isMinimized(),`${name} minimize button`);
+    await press(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} restore external maximize`);
+    await press(win,'.window-minimize');await until(()=>win.isMinimized(),`${name} minimize button`);
     check(true,`${name} own minimize button works`);win.restore();win.show();
     await until(()=>!win.isMinimized(),`${name} native restore`);
     win.setFullScreen(true);await until(()=>win.isFullScreen(),`${name} fullscreen`);
     await until(async()=> (await uiState(win)).fullscreen==='true',`${name} fullscreen event`);
-    await click(win,'.window-maximize');await until(()=>!win.isFullScreen(),`${name} fullscreen exit via restore`);
+    await press(win,'.window-maximize');await until(()=>!win.isFullScreen(),`${name} fullscreen exit via restore`);
     await until(async()=> (await uiState(win)).fullscreen==='false',`${name} fullscreen UI restored`);
     check(true,`${name} own restore exits native fullscreen`);
     await wait(600);
@@ -165,11 +169,11 @@ async function verifyWindowChrome() {
   await exercise(win,'Visualizer');
   check(await transport(),'Visualizer window actions preserve owner playback');
   if(!packaged) { await until(async()=> (await probe(win)).rms>.01,'PCM resumes after all visualizer window changes');check(true,'Fresh PCM continues through both frameless windows'); }
-  await click(owner,'.window-close');await until(()=>!owner.isVisible(),'own close hides owner with visualizer open');
+  await press(owner,'.window-close');await until(()=>!owner.isVisible(),'own close hides owner with visualizer open');
   check(!owner.isDestroyed(),'Own player Close preserves audio owner while visualizer is open');
-  await click(win,'.window-close');await until(()=>!visual(),'own visualizer close');await until(()=>owner.isVisible(),'owner restored');
+  await press(win,'.window-close');await until(()=>!visual(),'own visualizer close');await until(()=>owner.isVisible(),'owner restored');
   check(await transport(),'Own visualizer Close restores player without losing playback');
-  await click(owner,'.window-close');await until(()=>owner.isDestroyed(),'own player close without visualizer');
+  await press(owner,'.window-close');await until(()=>owner.isDestroyed(),'own player close without visualizer');
   check(true,'Own player Close really closes window when no visualizer is open');
 }
 async function verifyVisualizerControls() {
