@@ -213,7 +213,9 @@ html, body, #root { height: 100%; overflow: hidden; }
 }
 
 /* Native visual window is immersive at every size, not a DOM floating card. */
-.visualizer-window.visualizer-native { inset: 0; width: 100%; height: 100dvh; max-width: none; min-width: 0; min-height: 0; border: 0; border-radius: 0; resize: none; display: block; overflow: hidden; }
+/* Let fixed insets size the native surface. Dynamic viewport units can retain
+   the pre-resize height in a frameless Windows BrowserWindow. */
+.visualizer-window.visualizer-native { inset: 0; width: auto; height: auto; max-width: none; min-width: 0; min-height: 0; border: 0; border-radius: 0; resize: none; display: block; overflow: hidden; }
 .visualizer-native .visualizer-stage { width: 100%; height: 100%; }
 .visualizer-native .visualizer-titlebar { position: absolute; z-index: 2; inset: 0 0 auto; background: rgb(12 12 20 / 75%); -webkit-app-region: drag; }
 .visualizer-native .visualizer-title-actions, .visualizer-native button { -webkit-app-region: no-drag; }
