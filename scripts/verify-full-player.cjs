@@ -107,6 +107,12 @@ async function verifyWindowChrome() {
   const ownState = win => run(win, `window.desktop.windowControls.getState()`);
   const uiState = win => run(win, `({maximized:document.querySelector('.window-controls')?.dataset.maximized,fullscreen:document.querySelector('.window-controls')?.dataset.fullscreen})`);
   const transport = () => run(owner, `!!document.querySelector('button[aria-label="Pausar"]:not(:disabled)')`);
+  const verifyVisualizerTitle = async (win, label) => {
+    const titleLayout = await run(win, `(()=>{const r=s=>document.querySelector(s).getBoundingClientRect().toJSON();return {width:innerWidth,header:r('.visualizer-titlebar'),dot:r('.visualizer-status-dot'),title:r('.visualizer-titlebar strong'),subtitle:r('.visualizer-titlebar small'),actions:r('.visualizer-title-actions')};})()`);
+    layouts.push({ label, titleLayout });
+    const {header,dot,title,subtitle,actions,width} = titleLayout;
+    check(Math.abs(dot.left-header.left-15)<1 && Math.abs(dot.width-7)<1 && Math.abs(title.left-dot.right-8)<1 && Math.abs(subtitle.left-title.left)<1 && title.right<=actions.left+1 && subtitle.right<=actions.left+1 && actions.right<=width, `Visualizer title stays left-aligned with subtitle and clear of controls (${label})`);
+  };
   check(await run(owner, `document.querySelector('.player-window-chrome').getBoundingClientRect().height===32 && document.querySelector('.topbar').getBoundingClientRect().top===32`), 'Own 32px chrome is above the player session bar');
   check(await run(owner, `getComputedStyle(document.querySelector('.player-window-chrome')).webkitAppRegion==='drag' && [...document.querySelectorAll('.window-controls button')].every(b=>getComputedStyle(b).webkitAppRegion==='no-drag')`), 'Native drag region excludes all own window buttons');
   if (!windowActionsOnly) {
@@ -142,6 +148,7 @@ async function verifyWindowChrome() {
     await press(win,'.window-maximize');await until(()=>win.isMaximized(),`${name} UI maximize`);
     await until(async()=> (await uiState(win)).maximized==='true',`${name} restore icon`);
     check(await run(win, `!!document.querySelector('.window-maximize .lucide-copy')`),`${name} maximize changes icon to restore`);
+    if(name==='Visualizer') await verifyVisualizerTitle(win,'maximized');
     await press(win,'.window-maximize');await until(()=>!win.isMaximized(),`${name} UI restore`);
     await until(async()=> (await uiState(win)).maximized==='false',`${name} maximize icon restored`);
     win.maximize();await until(async()=> (await uiState(win)).maximized==='true',`${name} external maximize update`);
@@ -152,6 +159,7 @@ async function verifyWindowChrome() {
     await until(()=>!win.isMinimized(),`${name} native restore`);
     win.setFullScreen(true);await until(()=>win.isFullScreen(),`${name} fullscreen`);
     await until(async()=> (await uiState(win)).fullscreen==='true',`${name} fullscreen event`);
+    if(name==='Visualizer') await verifyVisualizerTitle(win,'fullscreen');
     await press(win,'.window-maximize');await until(()=>!win.isFullScreen(),`${name} fullscreen exit via restore`);
     await until(async()=> (await uiState(win)).fullscreen==='false',`${name} fullscreen UI restored`);
     check(true,`${name} own restore exits native fullscreen`);
@@ -163,6 +171,17 @@ async function verifyWindowChrome() {
   await until(()=>run(win,`document.querySelector('.visualizer-status-dot')?.dataset.status==='ready'`),'visualizer ready',30000);
   await click(win,'.visualizer-pin');
   await until(()=>run(win,`document.querySelector('.visualizer-pin').getAttribute('aria-pressed')==='true'`),'visualizer pinned for window QA');
+  for(const width of [360,768,1194,1920]) {
+    win.setContentSize(width,600);await wait(240);
+    await verifyVisualizerTitle(win,`${width}px requested`);
+    if(width===1194) writeFileSync(path.join(output,'visualizer-title-wide.png'),(await win.webContents.capturePage()).toPNG());
+  }
+  await run(win,`window.qaOriginalPresetLabel=document.querySelector('.visualizer-titlebar small').textContent;document.querySelector('.visualizer-titlebar small').textContent='MilkDrop — A very long imported preset name '.repeat(12)`);
+  await verifyVisualizerTitle(win,'long imported preset name');
+  await run(win,`document.querySelector('.visualizer-titlebar small').textContent=window.qaOriginalPresetLabel`);
+  win.setContentSize(1280,600);win.webContents.setZoomFactor(2);await wait(240);
+  await verifyVisualizerTitle(win,'200% zoom');
+  win.webContents.setZoomFactor(1);
   win.setContentSize(360,300);await wait(200);
   const visualLayout = await run(win, `(()=>{const buttons=[...document.querySelectorAll('.visualizer-title-actions button')].map(b=>b.getBoundingClientRect().toJSON()),r=document.querySelector('.visualizer-window').getBoundingClientRect().toJSON();return {buttons,bounds:r,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,dpr:devicePixelRatio};})()`);
   layouts.push({ visualLayout });

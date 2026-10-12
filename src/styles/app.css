@@ -1741,7 +1741,9 @@ button:disabled {
   user-select: none;
 }
 
-.visualizer-titlebar > div:first-child { display: grid; grid-template-columns: auto auto; column-gap: 8px; align-items: center; min-width: 0; }
+/* Only the text column grows: stretching the status-dot column displaces the
+   title toward the middle in a wide native window. */
+.visualizer-titlebar > div:first-child { display: grid; grid-template-columns: 7px minmax(0, 1fr); column-gap: 8px; align-items: center; min-width: 0; }
 .visualizer-titlebar strong { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .visualizer-titlebar small { grid-column: 2; overflow: hidden; color: rgb(232 229 255 / 64%); font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
 .visualizer-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #f9bd4d; box-shadow: 0 0 12px currentColor; }
